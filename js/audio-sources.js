@@ -177,9 +177,10 @@ class CityAudioSources {
         const grounded = y <= ground + 0.03 && Math.abs(entity.verticalVel) < 0.1;
         this.person(entity, x, y, z, entity.rig.speed, grounded, entity.rig, true, player);
       } else {
-        // Inactive bicycles stop updating and are silent, even if their stored speed is left over from riding.
-        if (!player && entity.type === 'cyclist') continue;
-        const kind = entity.type === 'car' ? 'sedan' : entity.type;
+        // Inactive bicycles & scooters stop updating and are silent, even if their stored speed is left over from riding.
+        if (!player && (entity.type === 'cyclist' || entity.type === 'scooter')) continue;
+        // The scooter's hub motor is near silent: it rolls like the bike
+        const kind = entity.type === 'car' ? 'sedan' : entity.type === 'scooter' ? 'cyclist' : entity.type;
         const helicopter = kind === 'helicopter';
         const verticalSpeed = player && helicopter ? helicopterVerticalSpeed(entity) : 0;
         const load = player ? helicopter ? helicopterLoad(entity, keys, verticalSpeed) : driveLoad(keys, entity.speed, kind === 'cyclist') : 0;

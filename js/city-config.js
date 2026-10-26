@@ -347,7 +347,7 @@ const ISLAND_BOUNDS = (() => {
   for (const p of COASTLINE) {
     minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
   }
-  return { minX, maxX, minZ, maxZ, sidewalkHeight: 0.22, waterLevel: -2.2 };
+  return { minX, maxX, minZ, maxZ, sidewalkHeight: 0.22, parkPavingHeight: 0.26, waterLevel: -2.2 };
 })();
 
 /** Street & place name at any world (x, z): the nearest roads of the real street centreline */
