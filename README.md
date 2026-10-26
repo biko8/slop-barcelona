@@ -1,6 +1,6 @@
 # Slop Barcelona
 
-Barcelona en 3D con [three.js](https://threejs.org/), WebGPURenderer y TSL, a escala real: el Eixample de Cerdà con sus illes achaflanadas y sus patios interiores, Ciutat Vella, Gràcia, Sants, el Poblenou y el frente marítimo, con la Sagrada Família, la Pedrera, la Casa Batlló, la Torre Glòries y compañía. Recórrela a pie, en taxi, en bici o en helicóptero.
+Barcelona en 3D con [three.js](https://threejs.org/), WebGPURenderer y TSL, a escala real: el Eixample de Cerdà con sus illes achaflanadas y sus patios interiores, Ciutat Vella, Gràcia, Sants, el Poblenou y el frente marítimo, con la Sagrada Família, la Pedrera, la Casa Batlló, la Torre Glòries y compañía. Recórrela a pie, en taxi, en bici, en patinete eléctrico o en helicóptero.
 
 Es un remix de [Slop New York](https://github.com/mrdoob/slop-newyork/): el mismo motor (tráfico, peatones, iluminación, materiales TSL, cámaras, audio) alimentado con la geografía real de Barcelona.
 

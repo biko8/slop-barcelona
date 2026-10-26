@@ -1525,8 +1525,10 @@ class PersonRig {
   /**
    * Riding a bicycle: `root` (Object3D) is the bike frame (pose in its parent's space, e.g. the scene), `crank` the
    * pedal crank angle. Seat, bars and bottom bracket in the frame's space (metres, +Z forward).
+   * Riding a scooter: a `deck` (its top, mid-stance) instead of the seat & bracket; the rider stands on it, one foot
+   * ahead of the other, knees soft, `crank` unused.
    */
-  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17 }) {
+  ride(root, crank, { seat, bars, gripHalf = 0.22, bracket, crankLength = 0.17, deck = null }) {
     const s = this.s;
     const j = this.bind;
     this.gait = 0;
@@ -1535,12 +1537,14 @@ class PersonRig {
     root.matrixWorld.decompose(_rootPos, _qRoot, _v);
     const toWorld = (local) => local.applyQuaternion(_qRoot).add(_rootPos);
 
-    // Pelvis on the saddle, leaning forward; chest further forward, head up looking ahead
-    qX(_qPelvis, 0.42).premultiply(_qRoot);
-    _pelvis.set(0, seat.y + 0.055 * s, seat.z + 0.03);
+    // Pelvis on the saddle, leaning forward; chest further forward, head up looking ahead (standing on a deck: hips
+    // over the feet a little below full height, barely leaning)
+    qX(_qPelvis, deck ? 0.06 : 0.42).premultiply(_qRoot);
+    if (deck) _pelvis.set(0, deck.y + (j[BONE.PELVIS].y - 0.05) * s, deck.z - 0.04);
+    else _pelvis.set(0, seat.y + 0.055 * s, seat.z + 0.03);
     toWorld(_pelvis);
     this.writeBone(BONE.PELVIS, _qPelvis, _pelvis);
-    _qChest.copy(_qPelvis).multiply(qX(_q, 0.2));
+    _qChest.copy(_qPelvis).multiply(qX(_q, deck ? 0.1 : 0.2));
     _chest.copy(j[BONE.CHEST]).sub(j[BONE.PELVIS]).multiplyScalar(s).applyQuaternion(_qPelvis).add(_pelvis);
     this.writeBone(BONE.CHEST, _qChest, _chest);
     _qa.copy(_qRoot).multiply(qX(_q, -0.12));
@@ -1577,10 +1581,13 @@ class PersonRig {
       _q2.multiply(qZ(_q, -side * ARM_BIND_ABDUCTION));
       this.writeBone(LIMB.forearm[i], _q2, _knee);
 
-      // pedals go round bottom, back, top, front as `crank` grows (pedalling forwards)
+      // pedals go round bottom, back, top, front as `crank` grows (pedalling forwards); on a deck the left foot
+      // leads, flat, the right one behind it
       const a = crank + (i === 0 ? 0 : Math.PI);
-      const pedal = _v.set(side * 0.1, bracket.y - Math.cos(a) * crankLength, bracket.z - Math.sin(a) * crankLength);
-      const footPitch = 0.16 + 0.16 * Math.cos(a) - 0.1 * Math.sin(a);
+      const pedal = deck
+        ? _v.set(side * 0.05, deck.y, deck.z + (i === 0 ? 0.16 : -0.14))
+        : _v.set(side * 0.1, bracket.y - Math.cos(a) * crankLength, bracket.z - Math.sin(a) * crankLength);
+      const footPitch = deck ? 0 : 0.16 + 0.16 * Math.cos(a) - 0.1 * Math.sin(a);
       qX(_q2, footPitch);
       // ball of the foot on the pedal: ankle = pedal - R * (ball offset from the ankle)
       _v2.set(0, TOE_JOINT.y * s - 0.012, TOE_JOINT.z * s * 0.85).applyQuaternion(_q2);

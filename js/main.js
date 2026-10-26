@@ -98,7 +98,7 @@ async function initApp() {
   buildRoadPaint(scene, trafficSystem.network);
   markInit('roadPaint');
 
-  // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
+  // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Scooter, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
   // Reuse teleport placement so saved players return at rest, close to their last positions.
   let restored = false;
@@ -172,7 +172,8 @@ async function initApp() {
     scene.getObjectByName('StoreClusteredLights'),
     scene.getObjectByName('StreetClusteredLights'),
     ...Object.values(controllerManager.entities).map((entity) => entity.mesh),
-    controllerManager.entities.cyclist.helmet
+    controllerManager.entities.cyclist.helmet,
+    controllerManager.entities.scooter.helmet
   ];
   scene.updateMatrixWorld(true);
   scene.matrixWorldAutoUpdate = false;
@@ -257,7 +258,7 @@ async function initApp() {
   const elControlsHint = document.getElementById('hud-controls-hint');
   const gamepadControls = new GamepadControls(controllerManager, cameraSystem, {
     onCycleMode: (step) => {
-      const modes = ['person', 'car', 'cyclist', 'helicopter'];
+      const modes = ['person', 'car', 'cyclist', 'scooter', 'helicopter'];
       selectMode(modes[(modes.indexOf(controllerManager.activeMode) + step + modes.length) % modes.length]);
     },
     onCycleCamera: cycleCamera,
@@ -270,10 +271,11 @@ async function initApp() {
     person: [[['W', 'S'], 'Andar / correr'], [['A', 'D'], 'Girar'], [['Space'], 'Saltar'], [['Drag'], 'Orbitar']],
     car: [[['W', 'S'], 'Acelerar / marcha atrás'], [['A', 'D'], 'Girar'], [['B'], 'Claxon'], [['Drag'], 'Orbitar']],
     cyclist: [[['W', 'S'], 'Pedalear / frenar'], [['A', 'D'], 'Inclinar y girar'], [['Drag'], 'Orbitar']],
+    scooter: [[['W', 'S'], 'Acelerar / frenar'], [['A', 'D'], 'Inclinar y girar'], [['Drag'], 'Orbitar']],
     helicopter: [[['W', 'S'], 'Cabeceo'], [['A', 'D'], 'Guiñada'], [['Space', 'E'], 'Subir'], [['Q', 'C'], 'Bajar']]
   };
-  // Top speeds in km/h (controllers.js caps them at 8.2, 36, 19 & 52 m/s): full scale of the speed meter
-  const topSpeedKmh = { person: 30, car: 130, cyclist: 68, helicopter: 187 };
+  // Top speeds in km/h (controllers.js caps them at 8.2, 36, 19, 6.95 & 52 m/s): full scale of the speed meter
+  const topSpeedKmh = { person: 30, car: 130, cyclist: 68, scooter: 25, helicopter: 187 };
 
   function renderControlHints(mode) {
     if (!elControlsHint) return;
@@ -515,7 +517,7 @@ async function initApp() {
     });
   }
 
-  // Global keyboard shortcuts for modes (1-4), cameras (V / 5-0), and HUD (H)
+  // Global keyboard shortcuts for modes (1-5), cameras (V / 6-0), and HUD (H)
   window.addEventListener('keydown', (e) => {
     if (isTypingInField(e)) return;
     switch (e.code) {
@@ -529,25 +531,25 @@ async function initApp() {
         selectMode('cyclist');
         break;
       case 'Digit4':
-        selectMode('helicopter');
+        selectMode('scooter');
         break;
       case 'Digit5':
-        selectCamera('chase', true);
+        selectMode('helicopter');
         break;
       case 'Digit6':
-        selectCamera('action', true);
+        selectCamera('chase', true);
         break;
       case 'Digit7':
-        selectCamera('pov', true);
+        selectCamera('action', true);
         break;
       case 'Digit8':
-        selectCamera('sagrada', true);
+        selectCamera('pov', true);
         break;
       case 'Digit9':
-        selectCamera('gracia', true);
+        selectCamera('sagrada', true);
         break;
       case 'Digit0':
-        selectCamera('rambla', true);
+        selectCamera('gracia', true);
         break;
       case 'KeyV':
         cycleCamera(e.shiftKey ? -1 : 1);

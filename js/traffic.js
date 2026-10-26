@@ -1183,7 +1183,7 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
     a.prevX = prevX; a.prevZ = prevZ;
     a.sin = Math.sin(heading); a.cos = Math.cos(heading);
     a.halfW = player.halfW; a.halfL = player.halfL;
-    a.mass = pe.type === 'car' ? 1700 : pe.type === 'cyclist' ? 95 : 80;
+    a.mass = pe.type === 'car' ? 1700 : pe.type === 'cyclist' || pe.type === 'scooter' ? 95 : 80;
     a.vx = a.sin * (pe.speed || 0) + (pe.vx || 0);
     a.vz = a.cos * (pe.speed || 0) + (pe.vz || 0);
     a.angularVel = pe.type === 'car' ? pe.angularVel || 0 : 0;
@@ -1634,8 +1634,8 @@ function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
       player.vx = player.fx * speed + (playerEntity.vx || 0);
       player.vz = player.fz * speed + (playerEntity.vz || 0);
     }
-    player.halfW = activeMode === 'cyclist' ? 0.35 : activeMode === 'person' ? 0.32 : 0.86;
-    player.halfL = activeMode === 'cyclist' ? 0.85 : activeMode === 'person' ? 0.32 : 2.18;
+    player.halfW = activeMode === 'cyclist' ? 0.35 : activeMode === 'scooter' ? 0.3 : activeMode === 'person' ? 0.32 : 0.86;
+    player.halfL = activeMode === 'cyclist' ? 0.85 : activeMode === 'scooter' ? 0.62 : activeMode === 'person' ? 0.32 : 2.18;
 
     // 1. Cars & buses
     // Limit attempted placements, not just successes, and rotate through the pool so an awkward location

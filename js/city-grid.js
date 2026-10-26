@@ -354,7 +354,7 @@ function buildCityGrid(scene) {
 
   // 6. Parks, squares & beaches on their real blocks (bcn-geodata.js land cover): hex-paver walks, stone-coped lawn
   //    beds under scattered trees, paved squares with plane trees & benches, sand
-  const PARK_Y = 0.26; // hex-paver walks (sidewalk tops are at 0.22)
+  const PARK_Y = ISLAND_BOUNDS.parkPavingHeight; // hex-paver walks (sidewalk tops are at 0.22)
   const BED_Y = 0.41; // lawn top inside the granite bed copings
   const parkLawnGeos = [];
   const inPolygon = (x, z, pts) => {

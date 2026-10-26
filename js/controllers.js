@@ -22,7 +22,7 @@ import { PersonCrowd, PersonRig } from './pedestrians.js';
 import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
 import { bryantParkLawn } from './landmarks.js';
 
-// Player models, animation and movement for walking, driving, cycling and flying.
+// Player models, animation and movement for walking, driving, cycling, scooting and flying.
 
 // Built at Plaça de Catalunya; main.js then places every mode at its start (city-config.js SPAWN)
 const SPAWN_Z = 0;
@@ -37,6 +37,12 @@ const CAR_DRIVE = {
 const BICYCLE_DRIVE = {
   speed: 19, reverseSpeed: 4.5, acceleration: 9,
   rolling: 0.08, drag: 0.004, coast: 0.2, brake: 7.5 // Backward input is scaled to 0.6, giving 4.5 m/s² braking.
+};
+// Barcelona caps e-scooters at 25 km/h: the hub motor pulls hard from a standstill and fades towards it.
+const SCOOTER_DRIVE = {
+  speed: 6.95, reverseSpeed: 1.6, acceleration: 3.2,
+  powerSpeed: 4.5,
+  rolling: 0.12, drag: 0.006, coast: 0.35, brake: 5.5
 };
 
 function driveSpeed(speed, throttle, dt, drive) {
@@ -196,7 +202,7 @@ class ThirdPersonControllerManager {
     this.scene = scene;
     this.colliders = colliders;
     this._colliderCells = null; // built on first use, see nearColliders()
-    this.activeMode = 'car'; // 'person' | 'car' | 'cyclist' | 'helicopter'
+    this.activeMode = 'car'; // 'person' | 'car' | 'cyclist' | 'scooter' | 'helicopter'
 
     this.keys = {
       forward: false,
@@ -211,6 +217,7 @@ class ThirdPersonControllerManager {
       person: this.createPersonEntity(),
       car: this.createCarEntity(),
       cyclist: this.createCyclistEntity(),
+      scooter: this.createScooterEntity(),
       helicopter: this.createHelicopterEntity()
     };
 
@@ -364,7 +371,7 @@ class ThirdPersonControllerManager {
       ent.lastCollisionSpark = null;
       for (const wheel of ent.wheels) if (wheel.isFront) wheel.steerPivot.rotation.y = 0;
       if (ent.carState) ent.carState.value.x = ent.carState.value.w = 0;
-    } else if (this.activeMode === 'cyclist') {
+    } else if (this.activeMode === 'cyclist' || this.activeMode === 'scooter') {
       ent.leanAngle = ent.leanPivot.rotation.z = 0;
     } else if (heli) {
       ent.verticalSpeed = ent.pitchAngle = ent.rollAngle = 0;
@@ -387,8 +394,8 @@ class ThirdPersonControllerManager {
     const reach = Math.max(shape.extX, shape.extZ);
     const margin = heli ? 6000 : 0;
     const entity = this.getActiveEntity();
-    // Conservative body cylinders, including the taxi's corners, bicycle wheels and helicopter tail/rotor.
-    const body = { person: [0.48, 1.9], car: [2.4, 1.9], cyclist: [1.0, 1.9], helicopter: [6.2, 3.2] };
+    // Conservative body cylinders, including the taxi's corners, bicycle & scooter wheels and helicopter tail/rotor.
+    const body = { person: [0.48, 1.9], car: [2.4, 1.9], cyclist: [1.0, 1.9], scooter: [0.7, 2.0], helicopter: [6.2, 3.2] };
     const others = Object.values(this.entities).filter(e => e !== entity).map(e => ({
       x: e.position.x, z: e.position.z, radius: body[e.type][0],
       bottom: e.position.y - (e.type === 'helicopter' ? 0.7 : 0), top: e.position.y + body[e.type][1]
@@ -755,7 +762,148 @@ class ThirdPersonControllerManager {
   }
 
   // =========================================================================
-  // 4. HELICOPTER (3D LOFTED MANHATTAN SIGHTSEEING TWIN-TURBINE CHOPPER)
+  // 4. E-SCOOTER (STANDING RIDER ON A FOLDING ELECTRIC KICK SCOOTER)
+  // =========================================================================
+  createScooterEntity() {
+    const root = new THREE.Group();
+    root.name = 'PlayerScooter';
+
+    const leanPivot = new THREE.Group();
+    root.add(leanPivot);
+
+    const bodyMat = createCarPaintMaterial(0x2b2f36);
+    const accentMat = new THREE.MeshStandardNodeMaterial({ color: 0x1fb85a, roughness: 0.4, metalness: 0.2 });
+    const tireMat = new THREE.MeshStandardNodeMaterial({ color: 0x15171a, roughness: 0.62 });
+    const alloyMat = new THREE.MeshStandardNodeMaterial({ color: 0xb8c0c8, roughness: 0.22, metalness: 0.8 });
+    const gripMat = new THREE.MeshStandardNodeMaterial({ color: 0x0e0f11, roughness: 0.8 });
+    const helmetMat = new THREE.MeshStandardNodeMaterial({
+      color: 0x1fb85a,
+      emissive: 0x06140b,
+      roughness: 0.3,
+      metalness: 0.15
+    });
+
+    // Solid 10" tyres on alloy hubs (the rear one holds the motor)
+    const wheelRadius = 0.125;
+    const tireGeo = new THREE.TorusGeometry(0.1, 0.028, 10, 22);
+    tireGeo.rotateY(Math.PI * 0.5);
+    const hubGeo = new THREE.CylinderGeometry(0.075, 0.075, 0.05, 16);
+    hubGeo.rotateZ(Math.PI * 0.5);
+    const motorGeo = new THREE.CylinderGeometry(0.085, 0.085, 0.07, 18);
+    motorGeo.rotateZ(Math.PI * 0.5);
+    const frontWheel = new THREE.Mesh(tireGeo, tireMat);
+    frontWheel.add(new THREE.Mesh(hubGeo, alloyMat));
+    frontWheel.position.set(0, wheelRadius, 0.5);
+    leanPivot.add(frontWheel);
+    const rearWheel = new THREE.Mesh(tireGeo, tireMat);
+    rearWheel.add(new THREE.Mesh(motorGeo, alloyMat));
+    rearWheel.position.set(0, wheelRadius, -0.46);
+    leanPivot.add(rearWheel);
+
+    // Deck with the battery underneath and a grip-tape top, kicked up into the neck at the front
+    const deckTop = 0.17;
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.72), bodyMat);
+    deck.position.set(0, deckTop - 0.025, -0.02);
+    leanPivot.add(deck);
+    const gripTape = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.004, 0.62), gripMat);
+    gripTape.position.set(0, deckTop + 0.002, -0.04);
+    leanPivot.add(gripTape);
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.2), bodyMat);
+    neck.rotation.x = -0.5;
+    neck.position.set(0, deckTop + 0.01, 0.38);
+    leanPivot.add(neck);
+    for (const side of [-1, 1]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.012, 0.6), accentMat);
+      stripe.position.set(side * 0.081, deckTop - 0.03, -0.02);
+      leanPivot.add(stripe);
+    }
+
+    // Rear fender over the motor wheel, with the brake light
+    const fender = new THREE.Mesh(new THREE.CylinderGeometry(0.145, 0.145, 0.06, 14, 1, true, Math.PI * 1.05, Math.PI * 0.75), bodyMat);
+    fender.rotation.z = Math.PI * 0.5;
+    fender.position.copy(rearWheel.position);
+    leanPivot.add(fender);
+    const tailLed = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.018, 0.012), new THREE.MeshBasicNodeMaterial({ color: 0xff1e26 }));
+    tailLed.position.set(0, deckTop + 0.02, -0.6);
+    leanPivot.add(tailLed);
+
+    // Fork & stem raked back slightly, the T-bar with its grips, thumb throttle & little display
+    const stemBase = new THREE.Vector3(0, 0.2, 0.5);
+    const bars = new THREE.Vector3(0, 1.06, 0.4);
+    const stemLength = stemBase.distanceTo(bars);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.024, stemLength, 12), bodyMat);
+    stem.position.addVectors(stemBase, bars).multiplyScalar(0.5);
+    stem.rotation.x = Math.atan2(bars.z - stemBase.z, bars.y - stemBase.y);
+    leanPivot.add(stem);
+    const fork = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.03), alloyMat);
+    fork.position.set(0, wheelRadius + 0.05, 0.5);
+    leanPivot.add(fork);
+    const handlebar = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.48, 10), alloyMat);
+    handlebar.rotation.z = Math.PI * 0.5;
+    handlebar.position.copy(bars);
+    leanPivot.add(handlebar);
+    for (const side of [-1, 1]) {
+      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.11, 10), gripMat);
+      grip.rotation.z = Math.PI * 0.5;
+      grip.position.set(side * 0.19, bars.y, bars.z);
+      leanPivot.add(grip);
+    }
+    const display = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.02, 0.06), gripMat);
+    display.position.set(0, bars.y + 0.02, bars.z + 0.005);
+    leanPivot.add(display);
+    const headLamp = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.02, 12), new THREE.MeshBasicNodeMaterial({ color: 0xf6f8ff }));
+    headLamp.rotation.x = Math.PI * 0.5;
+    headLamp.position.set(0, bars.y - 0.06, bars.z + 0.03);
+    leanPivot.add(headLamp);
+
+    // Skinned rider standing on the deck (see pedestrians.js ride), hands on the grips; the helmet rides on its head
+    const scooterFrame = { bars, gripHalf: 0.19, deck: new THREE.Vector3(0, deckTop, -0.04) };
+    const riderCrowd = new PersonCrowd(1, { farDistance: Infinity });
+    riderCrowd.meshes.forEach((m) => this.scene.add(m));
+    const riderRig = new PersonRig({ seed: 27.3, scale: 0.98, girth: 1.0, hair: 0.3 });
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.125, 14, 12), helmetMat);
+    helmet.scale.set(0.98, 0.8, 1.12);
+    this.scene.add(helmet);
+
+    const scooterShadowGeo = new THREE.PlaneGeometry(0.6, 1.45);
+    scooterShadowGeo.rotateX(-Math.PI * 0.5);
+    const scooterShadow = new THREE.Mesh(scooterShadowGeo, createContactShadowMaterial());
+    scooterShadow.position.set(0, 0.02, 0.0);
+    scooterShadow.renderOrder = 998;
+    root.add(scooterShadow);
+
+    const headLight = new THREE.SpotLight(0xf2f7ff, 0, 18, 0.36, 0.78, 1.25);
+    headLight.position.copy(headLamp.position);
+    headLight.target.position.set(0, 0.0, 6.8);
+    leanPivot.add(headLight, headLight.target);
+
+    this.scene.add(root);
+
+    return {
+      type: 'scooter',
+      label: 'Patinete eléctrico',
+      mesh: root,
+      leanPivot,
+      frontWheel,
+      rearWheel,
+      wheelRadius,
+      scooterFrame,
+      riderCrowd,
+      riderRig,
+      helmet,
+      headLight,
+      position: new THREE.Vector3(6.4, 0.0, SPAWN_Z - 4),
+      heading: 0,
+      speed: 0,
+      leanAngle: 0,
+      cameraTargetOffset: new THREE.Vector3(0, 1.45, 0),
+      chaseDistance: 4.4,
+      chaseHeight: 2.1
+    };
+  }
+
+  // =========================================================================
+  // 5. HELICOPTER (3D LOFTED MANHATTAN SIGHTSEEING TWIN-TURBINE CHOPPER)
   // =========================================================================
   createHelicopterEntity() {
     const root = new THREE.Group();
@@ -845,6 +993,12 @@ class ThirdPersonControllerManager {
     return !!b && !(b.park > 0.6 && !b.median);
   }
 
+  // Paved parks & squares (city-grid.js) rise a little above the sidewalks; beaches lie flat on the sand
+  isPointInPavedPark(x, z) {
+    const b = blockAt(x, z);
+    return !!b && b.park > 0.6 && !b.median && b.area > 250 && !(b.beach > b.park && b.beach > b.square);
+  }
+
   getGroundHeight(x, z, mode = 'person') {
     // Inside a district-sized park's raised lawn (none in Barcelona: city-config.js CENTRAL_PARK_BOUNDS lies out at sea)
     const cp = CENTRAL_PARK_BOUNDS;
@@ -856,7 +1010,9 @@ class ThirdPersonControllerManager {
     if (lawn && x > lawn.minX && x < lawn.maxX && z > lawn.minZ && z < lawn.maxZ) {
       return lawn.top;
     }
-    if (mode === 'person') {
+    // Pedestrians and scooters ride up onto the curbs, plazas & promenades
+    if (mode === 'person' || mode === 'scooter') {
+      if (this.isPointInPavedPark(x, z)) return ISLAND_BOUNDS.parkPavingHeight;
       return this.isPointOnSidewalk(x, z) ? ISLAND_BOUNDS.sidewalkHeight : 0.0;
     }
     return 0.0;
@@ -990,7 +1146,7 @@ class ThirdPersonControllerManager {
 
   // Pose the skinned characters once every entity has moved: the pedestrian's rig walks (or runs, turns, jumps) it to
   // where it now is, planting its feet on the ground; the cyclist sits on the bike, hands on the grips, feet on the
-  // pedals, helmet on its head
+  // pedals, and the scooter rider stands on the deck, helmets on their heads
   poseCharacters(dt) {
     const p = this.entities.person;
     const air = p.position.y - this.getGroundHeight(p.position.x, p.position.z, 'person');
@@ -1006,6 +1162,14 @@ class ThirdPersonControllerManager {
     b.riderCrowd.end();
     b.helmet.quaternion.copy(b.riderRig.headQuaternion);
     b.helmet.position.set(0, 0.175, -0.012).applyQuaternion(b.helmet.quaternion).add(b.riderRig.headPosition);
+
+    const sc = this.entities.scooter;
+    sc.riderRig.ride(sc.leanPivot, 0, sc.scooterFrame);
+    sc.riderCrowd.begin();
+    sc.riderCrowd.add(sc.riderRig, 0);
+    sc.riderCrowd.end();
+    sc.helmet.quaternion.copy(sc.riderRig.headQuaternion);
+    sc.helmet.position.set(0, 0.17, -0.01).applyQuaternion(sc.helmet.quaternion).add(sc.riderRig.headPosition);
   }
 
   update(dt, elapsed) {
@@ -1030,6 +1194,8 @@ class ThirdPersonControllerManager {
       this.updateCar(dt, elapsed);
     } else if (this.activeMode === 'cyclist') {
       this.updateCyclist(dt, elapsed);
+    } else if (this.activeMode === 'scooter') {
+      this.updateScooter(dt, elapsed);
     } else if (this.activeMode === 'helicopter') {
       this.updateHelicopter(dt, elapsed);
     }
@@ -1055,6 +1221,8 @@ class ThirdPersonControllerManager {
       const bikeActive = this.activeMode === 'cyclist';
       bike.headLight.intensity = bikeActive ? 115 * beamScale : 0;
     }
+    const scooter = this.entities.scooter;
+    scooter.headLight.intensity = this.activeMode === 'scooter' ? 90 * beamScale : 0;
 
     this.poseCharacters(dt);
   }
@@ -1216,6 +1384,41 @@ class ThirdPersonControllerManager {
     if (throttle > 0 && wheelDelta > 0) b.pedalPhase += wheelDelta / 3.2;
     b.crankPivot.rotation.x = b.pedalPhase;
     for (const pedal of b.pedals) pedal.rotation.x = -b.pedalPhase;
+  }
+
+  updateScooter(dt) {
+    const sc = this.entities.scooter;
+
+    let throttle = 0;
+    if (this.keys.forward) throttle = this.keys.forward;
+    else if (this.keys.backward) throttle = -this.keys.backward;
+
+    sc.speed = driveSpeed(sc.speed, throttle, dt, SCOOTER_DRIVE);
+
+    let turnInput = 0;
+    if (this.keys.left) turnInput = this.keys.left;
+    if (this.keys.right) turnInput = -this.keys.right;
+
+    // Small wheels and a short wheelbase turn tighter than the bike
+    if (Math.abs(sc.speed) > 0.1) {
+      const dirSign = sc.speed >= 0 ? 1 : -1;
+      sc.heading += turnInput * 2.4 * dirSign * dt;
+    }
+
+    sc.position.x += Math.sin(sc.heading) * sc.speed * dt;
+    sc.position.z += Math.cos(sc.heading) * sc.speed * dt;
+    this.resolveHorizontalCollision(sc.position, 0.5, null, sc);
+    // Hop up and down the curb in a few frames instead of snapping
+    const groundY = this.getGroundHeight(sc.position.x, sc.position.z, 'scooter');
+    sc.position.y += (groundY - sc.position.y) * Math.min(1, dt * 20);
+
+    const targetLean = -turnInput * Math.min(1.0, Math.abs(sc.speed) / 5.0) * 0.26;
+    sc.leanAngle += (targetLean - sc.leanAngle) * Math.min(1, dt * 8);
+    sc.leanPivot.rotation.z = sc.leanAngle;
+
+    const wheelDelta = (sc.speed / sc.wheelRadius) * dt;
+    sc.frontWheel.rotation.x += wheelDelta;
+    sc.rearWheel.rotation.x += wheelDelta;
   }
 
   updateHelicopter(dt, elapsed) {
