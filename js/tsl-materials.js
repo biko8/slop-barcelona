@@ -56,14 +56,7 @@ import {
   specularColorBlended,
   specularF90
 } from 'three/tsl';
-import {
-  CENTRAL_PARK_BOUNDS,
-  ISLAND_BOUNDS,
-  getIslandBoundsAtZ,
-  NJ_SHORELINE_POLYGON,
-  LONG_ISLAND_POLYGONS,
-  streetZ
-} from './city-config.js';
+import { CENTRAL_PARK_BOUNDS, ISLAND_BOUNDS, getIslandBoundsAtZ } from './city-config.js';
 
 // Procedural city materials: facades and interiors, vegetation, roads, water and lighting effects.
 
@@ -688,11 +681,12 @@ function createPreWarBuildingMaterial(opts = {}) {
     crownGlowHeight = 9999.0,
     crownGlowColor = 0xffe0a3,
     seed = 42.0,
+    stucco = 0.0, // 0: brick & ashlar coursing on the street fronts, 1: smooth render (stucco) with no joints
     boxLocal = false,
     cornerPier = 1.2 // solid masonry at both ends of every wall above the shopfronts (box-local mode)
   } = opts;
 
-  const cacheKey = `${stoneColor}_${trimColor}_${windowWidth}_${floorHeight}_${litProbability}_${warmth}_${crownGlowHeight}_${seed}_${boxLocal}_${cornerPier}`;
+  const cacheKey = `${stoneColor}_${trimColor}_${windowWidth}_${floorHeight}_${windowRatioX}_${windowRatioY}_${litProbability}_${warmth}_${crownGlowHeight}_${seed}_${stucco}_${boxLocal}_${cornerPier}`;
   if (_preWarCache.has(cacheKey)) {
     return _preWarCache.get(cacheKey);
   }
@@ -713,6 +707,7 @@ function createPreWarBuildingMaterial(opts = {}) {
   const uWarmth = uniform(warmth);
   const uCrownGlowHeight = uniform(crownGlowHeight);
   const uSeed = uniform(seed);
+  const uStucco = uniform(stucco);
   const cSoot = color(0x4a4236);
   const cWarmWindow = color(0xffcf86);
   const cCoolWindow = color(0xcfe2ff);
@@ -744,10 +739,10 @@ function createPreWarBuildingMaterial(opts = {}) {
   const aptRoom = evaluateApartmentInterior(uCoord, vCoord, winUV, cellId, bayWidth, uFloorHeight, uSeed, uWarmth, uLitProbability.mul(0.62), fw);
   const shopLit = step(0.24, hash2D(cellId.add(vec2(uSeed, 19.4))));
   const bulbCol = mix(cCoolWindow, cWarmWindow, step(float(1.0).sub(uWarmth), hash2D(cellId.add(vec2(uSeed.mul(1.9), 83.1)))));
-  // Window AC units (~12% of upper-floor windows), none in the floor the band course covers
+  // Window AC units (~4% of upper-floor windows), none in the floor the band course covers
   const beltFloor = step(5.0, mod(floor(gridV), 6.0)).mul(front);
   const acRand = hash2D(cellId.add(vec2(uSeed.mul(1.3).add(7.1), 91.7)));
-  const hasAC = step(0.88, acRand).mul(float(1.0).sub(isGroundFloor)).mul(float(1.0).sub(isRoof)).mul(open).mul(float(1.0).sub(beltFloor));
+  const hasAC = step(0.96, acRand).mul(float(1.0).sub(isGroundFloor)).mul(float(1.0).sub(isRoof)).mul(open).mul(float(1.0).sub(beltFloor));
 
   mat.colorNode = Fn(() => {
     const oneMinusEffX = float(1.0).sub(effHalfX);
@@ -763,8 +758,9 @@ function createPreWarBuildingMaterial(opts = {}) {
       isGroundFloor.mul(filteredPulse(cellUV.y, 0.86, 1.0, fw.y))
     );
 
-    // Double-hung meeting rail on upper floors + storefront transom & mullions on ground floor
-    const sashBarY = lineAA(cellUV.y.sub(0.52), 0.012).mul(float(1.0).sub(isGroundFloor));
+    // French windows on the upper floors (a fanlight bar near the head, the leaves' meeting stile) + storefront
+    // transom & mullions on the ground floor
+    const sashBarY = lineAA(cellUV.y.sub(oneMinusEffY.sub(0.1)), 0.012).mul(float(1.0).sub(isGroundFloor));
     const sashBarX = lineAA(cellUV.x.sub(0.50), 0.009).mul(float(1.0).sub(isGroundFloor)).mul(0.55);
     const storeTransom = lineAA(cellUV.y.sub(0.70), 0.015).mul(isGroundFloor);
     const storeMullion = lineAA(fract(cellUV.x.mul(2.0)).sub(0.5), 0.018).mul(isGroundFloor);
@@ -833,9 +829,12 @@ function createPreWarBuildingMaterial(opts = {}) {
     const lintelShadow = smoothstep(oneMinusEffY.sub(0.14), oneMinusEffY, cellUV.y).mul(0.58);
     const jambShadow = float(1.0).sub(smoothstep(effHalfX, effHalfX.add(0.08), cellUV.x)).mul(0.42);
     // No sills in the floor the band course covers
-    const sillSpan = filteredPulse(cellUV.x, effHalfX.sub(0.045), oneMinusEffX.add(0.045), fw.x).mul(open).mul(float(1.0).sub(beltFloor));
-    const isSillTop = filteredPulse(cellUV.y, effHalfY.sub(0.032), effHalfY, fw.y).mul(sillSpan);
-    const isSillUnderShadow = filteredPulse(cellUV.y, effHalfY.sub(0.075), effHalfY.sub(0.032), fw.y).mul(sillSpan);
+    // (on the upper floors the sill is a balcony's stone slab, wider than the window & casting a deeper shadow)
+    const slab = float(1.0).sub(isGroundFloor);
+    const sillSpan = filteredPulse(cellUV.x, effHalfX.sub(mix(float(0.045), float(0.13), slab)), oneMinusEffX.add(mix(float(0.045), float(0.13), slab)), fw.x)
+      .mul(open).mul(float(1.0).sub(beltFloor));
+    const isSillTop = filteredPulse(cellUV.y, effHalfY.sub(mix(float(0.032), float(0.05), slab)), effHalfY, fw.y).mul(sillSpan);
+    const isSillUnderShadow = filteredPulse(cellUV.y, effHalfY.sub(mix(float(0.075), float(0.16), slab)), effHalfY.sub(mix(float(0.032), float(0.05), slab)), fw.y).mul(sillSpan);
 
     const corniceShadow = smoothstep(0.76, 0.86, cornicePhase).mul(0.32).mul(front);
 
@@ -889,10 +888,12 @@ function createPreWarBuildingMaterial(opts = {}) {
     const wallTint = mix(mix(cStone, backTint, back), signPaint.xyz, signPaint.w);
     // Trim stone on the band courses, the storefront fascia and the coping capping every wall
     const trimMix = max(isCornice.mul(0.62).add(isGroundFloor.mul(0.28)), coping.mul(0.8));
+    // (a rendered street front loses the joints & the per-brick tint; rear & lot-line walls stay brick)
+    const coursing = float(1.0).sub(uStucco.mul(front));
     const masonryTint = mix(wallTint, cTrim, trimMix)
-      .mul(brickRnd.mul(0.14).add(1.0))
-      .mul(brickShiftVec);
-    const masonryWithMortar = mix(masonryTint, masonryTint.mul(0.62), mortarJoint);
+      .mul(brickRnd.mul(0.14).mul(coursing).add(1.0))
+      .mul(mix(vec3(1.0), brickShiftVec, coursing));
+    const masonryWithMortar = mix(masonryTint, masonryTint.mul(0.62), mortarJoint.mul(coursing));
     const masonryWeathered = mix(masonryWithMortar, cSoot, sootDirt)
       .mul(float(1.0).sub(corniceShadow))
       .mul(float(1.0).sub(isSillUnderShadow.mul(0.42)))
@@ -924,7 +925,24 @@ function createPreWarBuildingMaterial(opts = {}) {
     const wallOrRoof = mix(masonryWeathered, roofCol, isRoof);
     const withFrames = mix(wallOrRoof, frameCol, isWindowOpening.mul(sashMask));
     const withGlass = mix(withFrames, glassCol, isWindowGlass);
-    const withAC = mix(withGlass, acColor, inACBox);
+    // Barcelona's French windows on the upper floors: louvered persianes drawn over some (all the way or the top part)
+    // and the wrought-iron railing of the balcony across the foot of every one
+    const upperWin = isWindowOpening.mul(float(1.0).sub(isGroundFloor));
+    const shutRand = hash2D(cellId.add(vec2(uSeed.mul(0.7).add(3.3), 47.1)));
+    const shutDrop = step(shutRand, 0.2).add(step(0.2, shutRand).mul(step(shutRand, 0.42)).mul(0.45));
+    const shutter = step(float(1.0).sub(shutDrop), winUV.y).mul(upperWin).mul(step(0.01, shutDrop));
+    const shutPick = fract(shutRand.mul(17.3));
+    const shutPaint = mix(mix(color(0x4f6b4c), color(0x7a5537), step(0.45, shutPick)), color(0x6c7a73), step(0.8, shutPick));
+    const slats = float(1.0).sub(filteredPulse(fract(vCoord.mul(11.0)), 0.0, 0.35, fwidth(vCoord).mul(11.0)).mul(0.35));
+    const shutterCol = shutPaint.mul(slats).mul(recessShade.mul(0.3).add(0.7));
+    const railFw = fw.x.mul(10.0).div(max(oneMinusEffX.sub(effHalfX), 0.05));
+    const bars = filteredPulse(fract(winUV.x.mul(10.0)), 0.4, 0.6, railFw);
+    const railBand = filteredPulse(winUV.y, 0.0, 0.36, fw.y.mul(2.0));
+    const rails = max(filteredPulse(winUV.y, 0.31, 0.36, fw.y.mul(2.0)), filteredPulse(winUV.y, 0.0, 0.04, fw.y.mul(2.0)));
+    const iron = max(bars, rails).mul(railBand).mul(upperWin);
+    const withShutters = mix(withGlass, shutterCol, shutter);
+    const withRailing = mix(withShutters, color(0x1b1a19), iron.mul(0.92));
+    const withAC = mix(withRailing, acColor, inACBox);
 
     // Entrance of a residential front: painted panel door under a glazed transom, in a stone surround (door bay only)
     const finalCol = withAC.toVar();
@@ -2432,7 +2450,7 @@ const waterBoxCover = Fn(([x, a, b, s]) => {
 });
 
 /**
- * Hudson River, East River, Upper Bay & Central Park Lakes: Physically Based Estuary Water TSL Material
+ * The Mediterranean, the Port's basins & the park lakes: Physically Based Water TSL Material
  * - Wave normals (normalNode) from 4 rotated, scaled & drifting samples of the LEAN wave texture whose energy follows
  *   slowly drifting wind patches; the slope variance below each pixel footprint (plus always-unresolved capillary
  *   ripples) becomes GGX roughness, so crisp chop near the piers turns into a soft glitter path towards the horizon
@@ -2441,9 +2459,9 @@ const waterBoxCover = Fn(([x, a, b, s]) => {
  *   (F0 = 0.02): it hands the transmitted share to the body colour and weights the pipeline's SSR, so reflections come
  *   only from the sky IBL, the sun's GGX specular and SSR (no painted-in glint).
  * - Night: the lit skyline & far shores sit beyond SSR's reach, so an analytic city (lots, lit windows, storefronts &
- *   riverside lamps on Manhattan's shoreline, the NJ / Queens / Brooklyn waterfronts & Central Park's rim) is reflected
+ *   seafront lamps on the city inscribed in its shoreline, and around the park lakes their rims) is reflected
  *   through the same wave normals & Fresnel, blurred by the unresolved slopes into the familiar vertical light streaks.
- * - Park lakes, the Reservoir & fountains (well above the harbour) get finer, calmer ripples and a greener, duller body.
+ * - Park lakes, ponds & fountains (well above the sea) get finer, calmer ripples and a greener, duller body.
  */
 function createWaterMaterial() {
   const mat = new THREE.MeshStandardNodeMaterial({
@@ -2516,15 +2534,15 @@ function createWaterMaterial() {
     return mix(body, lake, pond).mul(crestTint);
   })();
 
-  // Night: the lit city seen along the reflected ray. Manhattan is a stack of boxes roughly inscribed in its shoreline;
-  // across the rivers stand the NJ & Queens / Brooklyn waterfronts, and around the park lakes Central Park's rim.
+  // Night: the lit city seen along the reflected ray. The city is a stack of boxes roughly inscribed in its shoreline
+  // (nothing stands across the sea), and around the park lakes their rims.
   // Each is a row of lots with varied heights, lit windows, storefronts & riverside lamps, box-filtered by the unresolved
   // wave slopes (vertically) & the foreshortened lateral slopes (horizontally), so distant lights smear into streaks.
-  // The boxes & shorelines come from the real geography (city-config.js): [minX, minZ, maxX, maxZ] slabs inscribed in
-  // the island ~1.1 km apart, the NJ shore west of it & the Brooklyn / Queens shore east of it every 900 m of z
+  // The boxes come from the real geography (city-config.js): [minX, minZ, maxX, maxZ] slabs inscribed in the detailed
+  // city's land ~1.1 km apart
 
   const IB = ISLAND_BOUNDS;
-  const MANHATTAN_BOXES = [];
+  const CITY_BOXES = [];
   for (let z0 = IB.minZ; z0 < IB.maxZ - 1; z0 += 1140) {
     const z1 = Math.min(IB.maxZ, z0 + 1140);
     let x0 = -Infinity, x1 = Infinity;
@@ -2533,25 +2551,14 @@ function createWaterMaterial() {
       x0 = Math.max(x0, s.westX + 40);
       x1 = Math.min(x1, s.eastX - 40);
     }
-    if (x1 - x0 > 100) MANHATTAN_BOXES.push([Math.round(x0), Math.round(z0), Math.round(x1), Math.round(z1)]);
+    if (x1 - x0 > 100) CITY_BOXES.push([Math.round(x0), Math.round(z0), Math.round(x1), Math.round(z1)]);
   }
-  const crossings = (polys, z) => {
-    const xs = [];
-    for (const poly of polys) {
-      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-        const a = poly[i], b = poly[j];
-        if ((a.z > z) !== (b.z > z)) xs.push(a.x + ((z - a.z) * (b.x - a.x)) / (b.z - a.z));
-      }
-    }
-    return xs;
-  };
+  // Nothing stands across the water from the city: the far shores lie out past the horizon
   const westShore = [], eastShore = [];
   for (let z = IB.minZ - 900; z <= IB.maxZ + 900; z += 900) {
     const s = getIslandBoundsAtZ(Math.max(IB.minZ, Math.min(IB.maxZ, z)));
-    const w = crossings([NJ_SHORELINE_POLYGON], z).filter((x) => x < s.westX - 150);
-    const e = crossings(LONG_ISLAND_POLYGONS || [], z).filter((x) => x > s.eastX + 100);
-    westShore.push([z, w.length ? Math.max(...w) : s.westX - 1300]);
-    eastShore.push([z, e.length ? Math.min(...e) : s.eastX + 900]);
+    westShore.push([z, s.westX - 20000]);
+    eastShore.push([z, s.eastX + 20000]);
   }
   // A shoreline x(z) through its control points, linear from one to the next. Built as a balanced sum of independent
   // per-segment terms: a 17-deep chain of nested mix() nodes takes TSL's node build exponentially long (getNodeType
@@ -2574,7 +2581,6 @@ function createWaterMaterial() {
     return terms[0];
   };
   const CPB = CENTRAL_PARK_BOUNDS;
-  const zSt = (n) => streetZ(n);
   mat.emissiveNode = Fn(() => {
     const night = smoothstep(0.55, 1.35, cityUniforms.uInteriorGlow);
     const P = positionWorld.xz;
@@ -2585,16 +2591,16 @@ function createWaterMaterial() {
     const sgn = vec2(mix(float(-1.0), float(1.0), step(0.0, dir.x)), mix(float(-1.0), float(1.0), step(0.0, dir.y)));
     const inv = sgn.div(max(abs(dir), vec2(0.0001))).toVar();
 
-    // Nearest Manhattan face entered from outside
+    // Nearest city face entered from outside
     const tIsland = float(1e5).toVar();
-    for (const [x0, z0, x1, z1] of MANHATTAN_BOXES) {
+    for (const [x0, z0, x1, z1] of CITY_BOXES) {
       const ta = vec2(x0, z0).sub(P).mul(inv);
       const tb = vec2(x1, z1).sub(P).mul(inv);
       const tn = max(min(ta.x, tb.x), min(ta.y, tb.y));
       const tf = min(max(ta.x, tb.x), max(ta.y, tb.y));
       tIsland.assign(min(tIsland, mix(float(1e5), tn, step(0.0, tn).mul(step(tn, tf)))));
     }
-    // Across the rivers: the New Jersey waterfront to the west, Queens & Brooklyn to the east
+    // The far shores (out past the horizon: the open sea)
     const xWest = shoreAt(westShore, P.y).toVar();
     const xEast = shoreAt(eastShore, P.y).toVar();
     const tShoreRaw = mix(xWest, xEast, step(0.0, dir.x)).sub(P.x).mul(inv.x).toVar();
@@ -2611,13 +2617,11 @@ function createWaterMaterial() {
     const hRefl = tHit.mul(tanEl); // height up the facades that this reflection sees
     const u = hit.x.add(hit.y); // runs along whichever face was hit
 
-    // Skyline heights: Midtown (60th to 28th St) & the Financial District (south of Chambers St) stand tallest
-    const midtown = smoothstep(zSt(80), zSt(60), hit.y).mul(float(1.0).sub(smoothstep(zSt(28), zSt(14), hit.y)));
-    const manhattanS = mix(float(70.0), float(215.0), max(midtown, smoothstep(4400.0, 4950.0, hit.y)));
-    // Across the rivers: the Jersey City towers (Newport to Exchange Place) & Long Island City (opposite 60th-26th St)
-    const jerseyCity = smoothstep(3300.0, 3900.0, hit.y).mul(float(1.0).sub(smoothstep(6100.0, 6500.0, hit.y))).mul(step(hit.x, 0.0));
-    const lic = smoothstep(zSt(62), zSt(57), hit.y).mul(float(1.0).sub(smoothstep(zSt(30), zSt(25), hit.y))).mul(step(0.0, hit.x));
-    const S = mix(mix(mix(float(30.0), float(120.0), max(jerseyCity, lic)), manhattanS, onIsland), float(120.0), lake);
+    // Skyline heights: the Eixample's even ~25 m cornice line, the Vila Olímpica's twin towers & Diagonal Mar's
+    // towers along the eastern shore standing tallest
+    const towers = smoothstep(1100.0, 1500.0, hit.x).mul(float(1.0).sub(smoothstep(4400.0, 5200.0, hit.x)));
+    const cityS = mix(float(26.0), float(110.0), towers);
+    const S = mix(mix(float(30.0), cityS, onIsland), float(60.0), lake);
     const brightness = mix(mix(float(0.6), float(1.0), onIsland), float(0.8), lake);
 
     // Footprint on the facades (m): unresolved slopes tilt the reflection ±2σ, laterally foreshortened at grazing views
@@ -2654,8 +2658,7 @@ function createWaterMaterial() {
       .add(color(0xffcf9a).mul(ground.mul(shopLit).mul(0.4)))
       .add(color(0xffd9b0).mul(lamps));
     const treeline = mix(float(1.0), smoothstep(0.2, 0.42, tanEl), lake); // lake shores: only towers above the trees
-    // The analytic skyline only models the rivers along the detailed island: fade it out up the Hudson & Harlem River
-    // and down the Upper Bay, where its shorelines no longer match the boroughs
+    // The analytic skyline only models the water along the detailed city: fade it out beyond its ends
     const region = smoothstep(IB.minZ - 400.0, IB.minZ - 100.0, P.y).mul(float(1.0).sub(smoothstep(IB.maxZ + 200.0, IB.maxZ + 600.0, P.y)));
     return city.mul(brightness).mul(treeline).mul(fresnel).mul(night).mul(region);
   })();

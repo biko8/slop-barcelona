@@ -1,6 +1,6 @@
 /* css/style.css */
-/* NYC HUD design system: quiet graphite glass in the corners of the screen, taxi yellow for whatever is active,
-   NYC DOT green for street names, so that the city itself stays the star */
+/* HUD design system: quiet graphite glass in the corners of the screen, taxi yellow for whatever is active,
+   marble street plaques for street names, so that the city itself stays the star */
 
 :root {
   /* Surfaces */
@@ -195,7 +195,7 @@ body::after {
   width: 56px;
   height: 56px;
   margin-bottom: 22px;
-  font-size: 21px;
+  font-size: 17px;
 }
 
 .loader-title {
@@ -340,7 +340,7 @@ body.hud-minimized .toolbar > :not(#btn-toggle-hud) {
   background: var(--taxi);
   color: var(--taxi-ink);
   font-weight: 800;
-  font-size: 12.5px;
+  font-size: 9.5px;
   letter-spacing: -0.02em;
   display: inline-flex;
   align-items: center;
@@ -665,20 +665,21 @@ body.hud-minimized .icon-show {
 
 /* Green blade, white inset border, Highway Gothic lettering: the sign on every Manhattan corner */
 .street-sign {
-  max-width: 210px;
+  max-width: 230px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 9px 13px 7px;
-  font-family: var(--font-sign);
+  padding: 8px 13px 7px;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 15px;
   font-weight: 700;
   line-height: 1.05;
   letter-spacing: 0.01em;
-  color: #ffffff;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 55%), var(--sign-green);
-  border-radius: 6px;
-  outline: 1.5px solid rgba(255, 255, 255, 0.92);
+  /* Barcelona's street plaques: dark lettering cut in pale marble, a thin dark rule inside the edge */
+  color: #1d1b18;
+  background: linear-gradient(180deg, #f7f4ec, #e6e0d2);
+  border-radius: 3px;
+  outline: 1.5px solid rgba(29, 27, 24, 0.75);
   outline-offset: -4px;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35), 0 10px 22px -10px rgba(0, 0, 0, 0.75);
 }
