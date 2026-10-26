@@ -5,7 +5,6 @@ import {
   getIslandBoundsAtZ,
   isTypingInField,
   blockAt,
-  streetZ
 } from './city-config.js';
 import { cityUniforms, createCarPaintMaterial, createContactShadowMaterial } from './tsl-materials.js';
 import {
@@ -25,8 +24,8 @@ import { bryantParkLawn } from './landmarks.js';
 
 // Player models, animation and movement for walking, driving, cycling and flying.
 
-// Spawn on 5th Ave at 37th St, facing south down the avenue toward the Empire State Building (34th St)
-const SPAWN_Z = streetZ(37);
+// Built at Plaça de Catalunya; main.js then places every mode at its start (city-config.js SPAWN)
+const SPAWN_Z = 0;
 const groundCollider = { type: 'ground' };
 
 const CAR_DRIVE = {
@@ -132,50 +131,61 @@ function createTaxiDoorDecalTexture() {
   c.width = 256;
   c.height = 128;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#ffbe14';
+  ctx.fillStyle = '#ffc21a';
   ctx.fillRect(0, 0, 256, 128);
-  // Black T&LC circle emblem
+  // The AMB taxi badge on the yellow door: TAXI, the licence number & the area's shield
   ctx.fillStyle = '#111317';
   ctx.beginPath();
-  ctx.arc(58, 64, 42, 0, Math.PI * 2);
+  ctx.moveTo(26, 30);
+  ctx.lineTo(90, 30);
+  ctx.lineTo(90, 78);
+  ctx.quadraticCurveTo(58, 104, 26, 78);
+  ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = '#ffbe14';
-  ctx.font = '900 32px Inter, Arial, sans-serif';
+  ctx.fillStyle = '#ffc21a';
+  ctx.font = '900 18px Inter, Arial, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('T', 58, 66);
-  // NYC TAXI typography & Fare Rate
+  ctx.fillText('AMB', 58, 58);
   ctx.fillStyle = '#111317';
   ctx.textAlign = 'left';
-  ctx.font = '900 26px Inter, Arial, sans-serif';
-  ctx.fillText('NYC TAXI', 112, 42);
+  ctx.font = '900 34px Inter, Arial, sans-serif';
+  ctx.fillText('TAXI', 106, 46);
   ctx.font = '700 15px JetBrains Mono, monospace';
-  ctx.fillText('7Y48 · MEDALLION', 112, 68);
-  ctx.font = '600 13px Inter, Arial, sans-serif';
-  ctx.fillText('$3.00 INITIAL FARE', 112, 90);
+  ctx.fillText('LLIC. 07248', 106, 76);
+  ctx.font = '600 12px Inter, Arial, sans-serif';
+  ctx.fillText('ÀREA METROPOLITANA', 106, 98);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-function createNYLicensePlateTexture() {
+function createLicensePlateTexture() {
   const c = document.createElement('canvas');
   c.width = 256;
-  c.height = 128;
+  c.height = 64;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#ffb81c';
-  ctx.fillRect(0, 0, 256, 128);
-  ctx.fillStyle = '#0d2244';
-  ctx.fillRect(6, 6, 244, 24);
-  ctx.fillStyle = '#ffb81c';
-  ctx.font = '800 15px Inter, Arial, sans-serif';
+  // EU plate: the blue band with the stars & E, the number in black on white
+  ctx.fillStyle = '#f6f6f2';
+  ctx.fillRect(0, 0, 256, 64);
+  ctx.fillStyle = '#123f9c';
+  ctx.fillRect(0, 0, 36, 64);
+  ctx.fillStyle = '#ffd200';
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2;
+    ctx.fillRect(18 + Math.cos(a) * 10 - 1.5, 22 + Math.sin(a) * 10 - 1.5, 3, 3);
+  }
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 18px Inter, Arial, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('NEW YORK', 128, 23);
-  ctx.fillStyle = '#0d2244';
-  ctx.font = '900 48px JetBrains Mono, monospace';
-  ctx.fillText('7Y48A', 128, 82);
-  ctx.font = '700 13px Inter, Arial, sans-serif';
-  ctx.fillText('NYC T&LC', 128, 114);
+  ctx.textBaseline = 'middle';
+  ctx.fillText('E', 18, 50);
+  ctx.fillStyle = '#111317';
+  ctx.font = '900 40px JetBrains Mono, monospace';
+  ctx.fillText('4821 LKB', 146, 34);
+  ctx.strokeStyle = '#111317';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1.5, 1.5, 253, 61);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -429,7 +439,7 @@ class ThirdPersonControllerManager {
   }
 
   // =========================================================================
-  // 1. PERSON (SKINNED NYC PEDESTRIAN WITH PLANTED-FOOTSTEP IK GAIT, see pedestrians.js)
+  // 1. PERSON (SKINNED PEDESTRIAN WITH PLANTED-FOOTSTEP IK GAIT, see pedestrians.js)
   // =========================================================================
   createPersonEntity() {
     const root = new THREE.Group();
@@ -452,7 +462,7 @@ class ThirdPersonControllerManager {
 
     return {
       type: 'person',
-      label: 'Pedestrian',
+      label: 'A pie',
       mesh: root,
       crowd,
       rig,
@@ -467,7 +477,7 @@ class ThirdPersonControllerManager {
   }
 
   // =========================================================================
-  // 2. CAR (3D LOFTED SCULPTED NYC MEDALLION YELLOW TAXI SEDAN)
+  // 2. CAR (3D LOFTED SCULPTED BARCELONA TAXI: BLACK WITH YELLOW DOORS)
   // =========================================================================
   createCarEntity() {
     const root = new THREE.Group();
@@ -477,7 +487,7 @@ class ThirdPersonControllerManager {
     root.add(chassisPivot);
 
     const spec = BODY_SPECS.taxi;
-    const taxiLoftMat = createLoftedCarMaterial(spec, 0xffbe14);
+    const taxiLoftMat = createLoftedCarMaterial(spec, 0x141518);
 
     // 1. 3D Lofted Taxi Body + Curved Windscreens + Crowned Roof + Side Mirrors + Roof Sign
     const carBodyGeo = buildCarGeometry(spec, false);
@@ -486,7 +496,7 @@ class ThirdPersonControllerManager {
     carBodyMesh.receiveShadow = true;
     chassisPivot.add(carBodyMesh);
 
-    // 2. Authentic NYC Taxi Side Door T&LC Medallion & Fare Tariff Emblem Decals, hugging the curved front doors
+    // 2. The AMB taxi badge on the yellow front doors, hugging their curve
     const doorDecalTex = createTaxiDoorDecalTexture();
     const doorDecalMat = new THREE.MeshStandardNodeMaterial({
       map: doorDecalTex,
@@ -502,14 +512,14 @@ class ThirdPersonControllerManager {
       chassisPivot.add(decal);
     }
 
-    // 3. High-Detail NY Empire Gold License Plates on the bumpers
-    const nyPlateTex = createNYLicensePlateTexture();
-    const nyPlateMat = new THREE.MeshStandardNodeMaterial({ map: nyPlateTex, roughness: 0.28 });
-    const rearPlate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.02), nyPlateMat);
+    // 3. Long EU number plates on the bumpers
+    const plateTex = createLicensePlateTexture();
+    const plateMat = new THREE.MeshStandardNodeMaterial({ map: plateTex, roughness: 0.28 });
+    const rearPlate = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.11, 0.02), plateMat);
     rearPlate.position.set(0, spec.plates[1], spec.zRear - 0.006);
     chassisPivot.add(rearPlate);
 
-    const frontPlate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.02), nyPlateMat);
+    const frontPlate = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.11, 0.02), plateMat);
     frontPlate.position.set(0, spec.plates[0], spec.zFront + 0.006);
     chassisPivot.add(frontPlate);
 
@@ -558,7 +568,7 @@ class ThirdPersonControllerManager {
 
     return {
       type: 'car',
-      label: 'NYC Yellow Taxi',
+      label: 'Taxi de Barcelona',
       mesh: root,
       chassisPivot,
       carState,
@@ -721,7 +731,7 @@ class ThirdPersonControllerManager {
 
     return {
       type: 'cyclist',
-      label: 'NYC Bike Lane Cyclist',
+      label: 'Bici por el carril bici',
       mesh: root,
       leanPivot,
       frontWheel,
@@ -812,7 +822,7 @@ class ThirdPersonControllerManager {
 
     return {
       type: 'helicopter',
-      label: 'Sightseeing Helicopter',
+      label: 'Helicóptero turístico',
       mesh: root,
       tiltPivot,
       mainRotorPivot,
@@ -836,12 +846,12 @@ class ThirdPersonControllerManager {
   }
 
   getGroundHeight(x, z, mode = 'person') {
-    // Inside Central Park (5th Ave to Central Park West, 59th St to 110th St)
+    // Inside a district-sized park's raised lawn (none in Barcelona: city-config.js CENTRAL_PARK_BOUNDS lies out at sea)
     const cp = CENTRAL_PARK_BOUNDS;
     if (x > cp.minX && x < cp.maxX && z > cp.minZ && z < cp.maxZ) {
       return 1.24;
     }
-    // Inside Bryant Park's Great Lawn (west of the New York Public Library, 40th-42nd St)
+    // On a raised lawn landmarks.js lays out (none in Barcelona)
     const lawn = bryantParkLawn;
     if (lawn && x > lawn.minX && x < lawn.maxX && z > lawn.minZ && z < lawn.maxZ) {
       return lawn.top;

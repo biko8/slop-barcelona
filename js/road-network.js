@@ -5,7 +5,7 @@ import {
   getIslandBoundsAtZ,
   BLOCKS
 } from './city-config.js';
-import { GEO } from './nyc-geodata.js';
+import { GEO } from './bcn-geodata.js';
 
 // Drivable road graph derived from the ground layout that city-grid.js actually builds: avenue corridors
 // between the raised curbs, cross-street gaps between curb rows, lanes that keep clear of medians, plazas
@@ -106,7 +106,7 @@ function buildRoadNetwork(sidewalks, obstacles, signalIntersections = []) {
   // 2. Avenue corridors: the most common curb-to-curb gap around each avenue's nominal x along its own stretches
   //    (CSCL: an avenue only exists between its ends, e.g. Irving Pl 14th-20th St, so it never claims a neighbour's
   //    roadway), and the stretches of z (at least 30 m long) where at least one of its lanes is clear. Each stretch
-  //    keeps its real direction: two-way stretches (Central Park West, West End Ave, York Ave...) carry half of the
+  //    keeps its real direction: two-way stretches carry half of the
   //    lanes each way
   const laneOffsets = (half) => (half >= 10.0 ? [-7.2, -3.6, 0, 3.6, 7.2]
     : half >= 8.5 ? [-5.4, -1.8, 1.8, 5.4]
@@ -246,7 +246,7 @@ function buildRoadNetwork(sidewalks, obstacles, signalIntersections = []) {
     for (const n of [p.from, p.to]) n.hz = Math.max(n.hz, Math.abs(p.z - n.z) + Math.min(p.half, 13));
   }
 
-  // 4b. Non-grid streets: Lower Manhattan, Broadway and the curved avenues farther north, from
+  // 4b. Centreline streets (all of Barcelona's: its road graph is the street centreline throughout), from
   //     the street centreline graph (GEO.roadGraph, tools/geo-roadgraph.mjs), minus the links the grid corridors above
   //     already carry. Its junctions join the grid where they meet it (at a grid intersection, on an avenue corridor or a
   //     cross street); a street's bends get shape nodes, so every edge stays straight.
@@ -864,7 +864,7 @@ function buildRoadNetwork(sidewalks, obstacles, signalIntersections = []) {
     const arms = n.arms;
     let next = 4;
     for (const a of arms) a.side = -1;
-    if (!n.general) {
+    if (!n.general || n.signal) {
       // each compass side goes to the arm best aligned with it, within 15°
       CARD.forEach(([cx, cz], c) => {
         let best = null;
@@ -909,8 +909,9 @@ function buildRoadNetwork(sidewalks, obstacles, signalIntersections = []) {
       roads.push({ members, group: -1, rank: Math.max(...members.map((m) => (m.ave ? 100 : 0) + m.half)) });
     }
     let groups = 0;
-    if (!n.general) {
-      // on the grid the road with a north-south arm is the avenue (0), the one with an east-west arm the street (1)
+    if (!n.general || n.signal) {
+      // on the grid (and at the signals of Cerdà's crossings) the road with a north-south arm is the avenue (0), the
+      // one with an east-west arm the street (1)
       for (const r of roads) {
         if (r.members.some((m) => m.side === 2 || m.side === 3)) r.group = 0;
         else if (r.members.some((m) => m.side === 0 || m.side === 1)) r.group = 1;

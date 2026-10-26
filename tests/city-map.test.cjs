@@ -4,16 +4,16 @@ const { join } = require('node:path');
 const test = require('node:test');
 const { loadModule } = require('./helpers/module.cjs');
 
-const source = readFileSync(join(__dirname, '../js/nyc-map.js'), 'utf8');
+const source = readFileSync(join(__dirname, '../js/city-map.js'), 'utf8');
 
 for (const [width, height, dpr] of [[500, 300, 1], [320, 180, 1.5], [1920, 1080, 2]]) {
   test(`map clicks match rendered world positions at ${width}x${height}, DPR ${dpr}`, () => {
     const window = { innerWidth: width, innerHeight: height, devicePixelRatio: dpr };
-    const { NYCMapSystem } = loadModule(source, {
+    const { CityMapSystem } = loadModule(source, {
       globals: { window, performance: { now: () => 0 } },
-      imports: { './nyc-geodata.js': { GEO: {} }, './city-config.js': { ROADS: [] } }
+      imports: { './bcn-geodata.js': { GEO: { frame: { bearingDeg: -44.8 } } }, './city-config.js': { ROADS: [], lonLatToWorld: () => ({ x: 0, z: 0 }) } }
     });
-    const map = Object.create(NYCMapSystem.prototype);
+    const map = Object.create(CityMapSystem.prototype);
     // Capture the production render viewport; drawing primitives are irrelevant to coordinate conversion.
     const context = new Proxy({}, { get: () => () => {} });
     let view;
@@ -96,18 +96,18 @@ function mapHarness() {
     canvas.dispatch('lostpointercapture', { pointerId: id });
   };
   const config = {
-    ROADS: [], BLOCKS: [], NYC_LANDMARKS: [],
+    ROADS: [], BLOCKS: [], CITY_LANDMARKS: [], lonLatToWorld: () => ({ x: 0, z: 0 }),
     ISLAND_BOUNDS: { minX: -10000, maxX: 10000, minZ: -10000, maxZ: 10000 },
     getIslandBoundsAtZ: () => ({ westX: -10000, eastX: 10000 }),
     getLocationLabel: (x, z) => `${x}, ${z}`,
     isTypingInField: () => false
   };
-  const { NYCMapSystem } = loadModule(source, {
+  const { CityMapSystem } = loadModule(source, {
     globals: { window, document },
-    imports: { './nyc-geodata.js': { GEO: { frame: {} } }, './city-config.js': config }
+    imports: { './bcn-geodata.js': { GEO: { frame: { bearingDeg: -44.8 } } }, './city-config.js': config }
   });
   const teleports = [], toggles = [];
-  const map = new NYCMapSystem({
+  const map = new CityMapSystem({
     controllerManager: { getActiveEntity: () => ({ position: { x: 1000, z: 2000 } }) },
     onTeleport: (x, z) => teleports.push([x, z]),
     onToggle: (open) => toggles.push(open)
@@ -196,9 +196,9 @@ test('a pointer released outside the map or far from its start does not teleport
 test('mouse hover and zoom buttons remain available without a pan', () => {
   const h = mapHarness();
   h.pointer(h.canvas, 'pointermove', 1, 120, 130, 'mouse');
-  assert.equal(h.hoverInfo.textContent, '1010, 2010 · Click to teleport here');
+  assert.equal(h.hoverInfo.textContent, '1010, 2010 · Haz clic para ir aquí');
   h.pointer(h.canvas, 'pointermove', 2, 180, 130);
-  assert.equal(h.hoverInfo.textContent, '1010, 2010 · Click to teleport here', 'untracked touch does not update hover');
+  assert.equal(h.hoverInfo.textContent, '1010, 2010 · Haz clic para ir aquí', 'untracked touch does not update hover');
   h.zoomIn.dispatch('click');
   assert.equal(h.map.viewZoom, 1.45);
   h.zoomOut.dispatch('click');

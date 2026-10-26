@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-// Spatial culling for the island-wide static geometry. Most of Manhattan's street furniture and building massing is
+// Spatial culling for the island-wide static geometry. Most of the city's street furniture and building massing is
 // built as a handful of instanced meshes spanning the whole island (bounding spheres ~7 km across), which three.js can
 // never cull: every frame the GPU transformed every lamp post, signal and facade box of the island three times (the
 // view and both sun shadow cascades). This module, run once after the city is built (main.js):

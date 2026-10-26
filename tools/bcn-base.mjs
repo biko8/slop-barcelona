@@ -1,15 +1,11 @@
-// Shared data loading, coordinate transforms and geometry helpers for the geodata generator.
-// Sources: NYC Open Data and OpenStreetMap. Frame: 1 unit = 1 m, x = Manhattan-grid east, z = grid south
-// (north = -z), origin at the centreline
-// intersection of 5th Ave & 42nd St, axes turned 29.0° from true north (the grid's measured bearing).
+// Shared data loading, coordinate frame and geometry helpers for the Barcelona geodata generator.
+// Source: OpenStreetMap (tools/data/bcn_*.json, written by tools/bcn-extract.py from a .osm.pbf).
 //
-// Inputs (tools/data/, see tools/fetch-geodata.sh):
-//   dcp_boroughs.json      NYC DCP Borough Boundaries (water areas excluded)  data.cityofnewyork.us gthc-hcne
-//   cscl_manhattan.json    NYC street centerline (CSCL), Manhattan             data.cityofnewyork.us inkn-q76z
-//   nycparks_manhattan.json NYC Parks properties, Manhattan                    data.cityofnewyork.us enfh-gkve
-//   osm_*.json             OpenStreetMap via Overpass (Central Park features, piers, NJ coastline)
+// Frame: 1 unit = 1 m, x = Eixample-grid "east" (along Carrer d'Aragó toward the Besòs), z = grid "south" (down
+// Passeig de Gràcia toward the sea), so north = -z is up toward Collserola. Origin at the centre of Plaça de Catalunya;
+// the axes are turned to the Cerdà grid's measured bearing (≈ 45° from true north).
 //
-// Run tools/build-geodata.mjs to generate js/nyc-geodata.js.
+// Run tools/build-bcn-geodata.mjs to generate js/bcn-geodata.js.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,8 +18,8 @@ const log = (...a) => console.log('[geodata]', ...a);
 // =====================================================================================================================
 // 1. FRAME
 // =====================================================================================================================
-const LAT0 = 40.75318;
-const LON0 = -73.98185;
+const LAT0 = 41.38703; // Plaça de Catalunya, centre of the square
+const LON0 = 2.17005;
 const A = 6378137.0;
 const E2 = 6.69437999014e-3;
 const PHI0 = (LAT0 * Math.PI) / 180;
@@ -32,22 +28,26 @@ const NRAD = A / Math.sqrt(1 - E2 * SIN0 * SIN0);
 const MRAD = (A * (1 - E2)) / Math.pow(1 - E2 * SIN0 * SIN0, 1.5);
 const KX = (Math.PI / 180) * NRAD * Math.cos(PHI0);
 const KY = (Math.PI / 180) * MRAD;
-let THETA = (29.017 * Math.PI) / 180; // refined below from the avenues
-let ORIGIN = [0, 0]; // grid (u, v) of 5th Ave & 42nd St, refined below
+let THETA = (-44.8 * Math.PI) / 180; // bearing of grid north (up Balmes), refined below from the Eixample streets
 
-// Local tangent plane (east, north) metres
 const enu = (lon, lat) => [(lon - LON0) * KX, (lat - LAT0) * KY];
-// Grid frame: u = grid east, v = grid south
-function gridUV(lon, lat) {
+function toWorld(lon, lat) {
   const [e, n] = enu(lon, lat);
   const c = Math.cos(THETA);
   const s = Math.sin(THETA);
   return [e * c - n * s, -(e * s + n * c)];
 }
-const toWorld = (lon, lat) => {
-  const [u, v] = gridUV(lon, lat);
-  return [u - ORIGIN[0], v - ORIGIN[1]];
-};
+function toLonLat(x, z) {
+  const c = Math.cos(THETA);
+  const s = Math.sin(THETA);
+  const e = x * c - z * s;
+  const n = -x * s - z * c;
+  return [LON0 + e / KX, LAT0 + n / KY];
+}
+
+// The detailed city: a grid-aligned rectangle from Sants & Plaça d'Espanya to Poblenou, the lower slopes of Gràcia
+// down to the sea (the land inside it, see section 4)
+const DETAIL = { x0: -2900, x1: 3500, z0: -2500, z1: 3200 };
 
 // =====================================================================================================================
 // 2. GEOMETRY HELPERS
@@ -66,6 +66,16 @@ function bbox(pts) {
     if (z > z1) z1 = z;
   }
   return { x0, x1, z0, z1 };
+}
+const centroid = (r) => [r.reduce((t, p) => t + p[0], 0) / r.length, r.reduce((t, p) => t + p[1], 0) / r.length];
+function pointInRing(r, x, z) {
+  let inside = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [ax, az] = r[i];
+    const [bx, bz] = r[j];
+    if ((az > z) !== (bz > z) && x < ((bx - ax) * (z - az)) / (bz - az) + ax) inside = !inside;
+  }
+  return inside;
 }
 // Ramer-Douglas-Peucker on an open polyline
 function rdp(pts, eps) {
@@ -262,36 +272,37 @@ class Raster {
       const p = pts[(i + pts.length - 1) % pts.length], q = pts[i], n = pts[(i + 1) % pts.length];
       if ((q[0] - p[0]) * (n[1] - q[1]) - (q[1] - p[1]) * (n[0] - q[0]) !== 0) out.push(q);
     }
-    return out.map((q, i) => {
+    // (true corners, between two edges longer than 3 cells, are kept: a rectangle's stay square)
+    const long = (a, b) => Math.abs(b[0] - a[0]) + Math.abs(b[1] - a[1]) > 3 * res;
+    const res2 = [];
+    out.forEach((q, i) => {
+      const p = out[(i + out.length - 1) % out.length];
       const n = out[(i + 1) % out.length];
-      return [(q[0] + n[0]) / 2, (q[1] + n[1]) / 2];
+      if (long(p, q) && long(q, n)) res2.push(q);
+      res2.push([(q[0] + n[0]) / 2, (q[1] + n[1]) / 2]);
     });
+    return res2;
   }
 }
 
 // =====================================================================================================================
-// 3. FRAME CALIBRATION FROM THE CENTERLINE
+// 3. FRAME CALIBRATION FROM THE EIXAMPLE
 // =====================================================================================================================
-const cscl = load('cscl_manhattan.json');
-function segLines(s) {
-  const g = s.the_geom;
-  if (!g) return [];
-  return g.type === 'MultiLineString' ? g.coordinates : [g.coordinates];
-}
+const roadsOSM = load('bcn_roads.json').elements;
 {
-  // Bearing: length-weighted median direction of the long straight avenue segments
-  const AVE = new Set(['1 AVE', '2 AVE', '3 AVE', 'LEXINGTON AVE', 'PARK AVE', 'MADISON AVE', '5 AVE', 'AVE OF THE AMERICAS', '7 AVE', '8 AVE',
-    '9 AVE', '10 AVE', 'AMSTERDAM AVE', 'COLUMBUS AVE', 'CENTRAL PARK W', 'YORK AVE', 'W  END AVE']);
+  // Bearing: length-weighted median of the long straight pieces of Cerdà's streets, folded onto one quarter turn
+  const CERDA = /^(Carrer d'Aragó|Carrer de València|Carrer de Mallorca|Carrer de Provença|Carrer del Rosselló|Carrer de Còrsega|Carrer del Consell de Cent|Carrer de la Diputació|Carrer de Balmes|Carrer d'Enric Granados|Carrer d'Aribau|Carrer de Muntaner|Carrer de Casanova|Carrer de Villarroel|Carrer de Pau Claris|Carrer de Roger de Llúria|Carrer del Bruc|Carrer de Girona|Carrer de Bailèn|Carrer de Sardenya|Carrer de la Marina)$/;
   const angs = [];
-  for (const s of cscl) {
-    if (!AVE.has(s.full_street_name) || s.rw_type !== '1') continue;
-    for (const ln of segLines(s)) {
-      const [e0, n0] = enu(...ln[0]);
-      const [e1, n1] = enu(...ln[ln.length - 1]);
+  for (const w of roadsOSM) {
+    if (!CERDA.test(w.tags.name || '')) continue;
+    const p = w.pts;
+    for (let i = 1; i < p.length; i++) {
+      const [e0, n0] = enu(...p[i - 1]);
+      const [e1, n1] = enu(...p[i]);
       const L = Math.hypot(e1 - e0, n1 - n0);
-      if (L < 60) continue;
-      let a = (Math.atan2(e1 - e0, n1 - n0) * 180) / Math.PI;
-      a = ((a % 180) + 180) % 180;
+      if (L < 30) continue;
+      let a = (Math.atan2(e1 - e0, n1 - n0) * 180) / Math.PI; // bearing
+      a = ((a % 90) + 90) % 90; // folded to [0, 90): the grid's bearings modulo a quarter turn sit near 45°
       angs.push([a, L]);
     }
   }
@@ -300,152 +311,149 @@ function segLines(s) {
   let acc = 0;
   for (const [a, L] of angs) {
     acc += L;
-    if (acc >= tot / 2) { THETA = (a * Math.PI) / 180; break; }
-  }
-  // Origin: the shared endpoint of 5 AVE and E/W 42 ST
-  const ends = new Map();
-  for (const s of cscl) {
-    for (const ln of segLines(s)) {
-      for (const p of [ln[0], ln[ln.length - 1]]) {
-        const k = `${p[0].toFixed(6)},${p[1].toFixed(6)}`;
-        if (!ends.has(k)) ends.set(k, { p, names: new Set() });
-        ends.get(k).names.add(s.full_street_name);
-      }
+    if (acc >= tot / 2) {
+      // grid north points up Balmes (toward Collserola, north-west)
+      THETA = ((a - 90) * Math.PI) / 180;
+      break;
     }
   }
-  for (const { p, names } of ends.values()) {
-    if (names.has('5 AVE') && (names.has('E  42 ST') || names.has('W  42 ST'))) ORIGIN = gridUV(p[0], p[1]);
-  }
-  log(`bearing ${(THETA * 180 / Math.PI).toFixed(3)}°, origin (5 Ave & 42 St) at grid ${ORIGIN.map((v) => v.toFixed(1))}`);
+  log(`grid north bearing ${((THETA * 180) / Math.PI).toFixed(3)}° (${angs.length} Eixample pieces)`);
 }
 
 // =====================================================================================================================
-// 4. SHORELINES
+// 4. COASTLINE & LAND (OpenStreetMap natural=coastline: land on the left of each way)
 // =====================================================================================================================
-const dcp = load('dcp_boroughs.json');
-const boro = {};
-for (const f of dcp.features) {
-  const rings = f.geometry.coordinates.map((poly) => poly[0].map(([lon, lat]) => toWorld(lon, lat)));
-  rings.sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)));
-  boro[f.properties.boroname] = rings;
-}
-const centroid = (r) => [r.reduce((t, p) => t + p[0], 0) / r.length, r.reduce((t, p) => t + p[1], 0) / r.length];
-
-// OSM piers (closed ways & multipolygons) in world coordinates, with names
-const osmPiers = load('osm_piers.json');
-const pierPolys = [];
-for (const e of osmPiers.elements) {
-  const t = e.tags || {};
-  if (e.type === 'way' && e.geometry && e.nodes && e.nodes[0] === e.nodes[e.nodes.length - 1]) {
-    pierPolys.push({ name: t.name || '', ring: e.geometry.map((g) => toWorld(g.lon, g.lat)) });
-  } else if (e.type === 'relation') {
-    for (const m of e.members || []) {
-      if (m.role === 'outer' && m.geometry) pierPolys.push({ name: t.name || '', ring: m.geometry.map((g) => toWorld(g.lon, g.lat)) });
-    }
-  }
-}
-log(`${pierPolys.length} OSM pier polygons`);
-
-// --- Manhattan island: DCP polygon, minus the piers, opened to drop slivers, as a bulkhead line ---------------------
-const RES = 2;
-const mnRing = boro.Manhattan[0];
-const mbb = bbox(mnRing);
-const ras = new Raster(mbb.x0 - 60, mbb.z0 - 60, mbb.x1 + 60, mbb.z1 + 60, RES);
-ras.fillRing(mnRing, 1);
-const pierCells = new Raster(mbb.x0 - 60, mbb.z0 - 60, mbb.x1 + 60, mbb.z1 + 60, RES);
-// Piers off the island: OSM pier polygons whose area lies mostly beyond a slightly eroded shore get cut out
-for (const p of pierPolys) {
-  const [cx, cz] = centroid(p.ring);
-  if (cz < mbb.z0 - 200 || cz > mbb.z1 + 200 || cx < mbb.x0 - 600 || cx > mbb.x1 + 600) continue;
-  pierCells.fillRing(p.ring, 1);
-}
-{
-  // Grow the pier mask by 4 m: OSM pier outlines and DCP's pier decks differ by a few metres
-  const toPier = pierCells.edt((x) => x === 1);
-  const grow = (4 / RES) ** 2;
-  for (let i = 0; i < ras.d.length; i++) if (toPier[i] <= grow) ras.d[i] = 0;
-}
-ras.open(9); // slivers & stubs narrower than ~18 m (pier necks, fender lines, pile fields)
-ras.close(5); // notches left where pier decks met the bulkhead
-ras.keepLargest();
-let manhattan = ras.traceOuter();
-manhattan = rdpRing(manhattan, 1.6);
-if (ringArea(manhattan) > 0) manhattan.reverse(); // same winding as the old MANHATTAN_COASTLINE (negative shoelace area in x, z)
-log(`Manhattan bulkhead ring: ${manhattan.length} pts, area ${(Math.abs(ringArea(manhattan)) / 1e6).toFixed(2)} km² (DCP ${(Math.abs(ringArea(mnRing)) / 1e6).toFixed(2)})`);
-
-
-// --- Harbour islands (Manhattan borough parts) -----------------------------------------------------------------------
-function nearestPart(rings, x, z) {
-  let best = null, bd = Infinity;
-  for (const r of rings) {
-    const [cx, cz] = centroid(r);
-    const d = Math.hypot(cx - x, cz - z);
-    if (d < bd) { bd = d; best = r; }
-  }
-  return best;
-}
-const islands = {
-  roosevelt: nearestPart(boro.Manhattan, 1793 - 54, -1825 + 69),
-  randalls: nearestPart(boro.Manhattan, 1961 - 54, -6032 + 69),
-  governors: nearestPart(boro.Manhattan, 750 - 54, 7705 + 69),
-  liberty: nearestPart(boro.Manhattan, -1389 - 54, 8791 + 69),
-  millRock: nearestPart(boro.Manhattan, 1674 - 54, -4358 + 69)
-};
-for (const k of Object.keys(islands)) {
-  islands[k] = rdpRing(islands[k], 1.6);
-  if (ringArea(islands[k]) > 0) islands[k].reverse();
-  log(`island ${k}: ${islands[k].length} pts, ${(Math.abs(ringArea(islands[k])) / 1e6).toFixed(3)} km²`);
-}
-
-// --- Outer boroughs ---------------------------------------------------------------------------------------------------
-function simplifyRings(rings, eps, minArea) {
-  return rings.filter((r) => Math.abs(ringArea(r)) >= minArea).map((r) => {
-    const s = rdpRing(r, eps);
-    if (ringArea(s) > 0) s.reverse();
-    return s;
-  });
-}
-const boroughs = {
-  brooklyn: simplifyRings(boro.Brooklyn, 6, 60000),
-  queens: simplifyRings(boro.Queens, 6, 60000),
-  bronx: simplifyRings(boro.Bronx, 6, 60000),
-  statenIsland: simplifyRings(boro['Staten Island'], 8, 60000)
-};
-for (const [k, v] of Object.entries(boroughs)) log(`borough ${k}: ${v.length} rings, ${v.reduce((t, r) => t + r.length, 0)} pts`);
-
-// --- New Jersey from the OSM coastline (land on the left of each way) -------------------------------------------------
-function chainCoastline(osm) {
-  const ways = osm.elements.filter((e) => e.type === 'way' && e.geometry);
+function chainCoastline(ways, bb) {
+  const key = (p) => `${p[0]},${p[1]}`;
   const byStart = new Map();
-  for (const w of ways) byStart.set(w.nodes[0], w);
+  for (const w of ways) byStart.set(key(w[0]), w);
   const used = new Set();
   const chains = [];
   for (const w of ways) {
-    if (used.has(w.id)) continue;
-    // Walk back to the chain's first way
+    if (used.has(w)) continue;
     let first = w;
-    const seen = new Set([w.id]);
+    const seen = new Set([w]);
     for (;;) {
-      const prev = ways.find((u) => !seen.has(u.id) && u.nodes[u.nodes.length - 1] === first.nodes[0]);
+      const prev = ways.find((u) => !seen.has(u) && !used.has(u) && key(u[u.length - 1]) === key(first[0]));
       if (!prev) break;
-      seen.add(prev.id);
+      seen.add(prev);
       first = prev;
     }
-    const nodes = [];
+    const pts = [];
     let cur = first;
-    while (cur && !used.has(cur.id)) {
-      used.add(cur.id);
-      const g = cur.geometry.map((p) => toWorld(p.lon, p.lat));
-      nodes.push(...(nodes.length ? g.slice(1) : g));
-      cur = byStart.get(cur.nodes[cur.nodes.length - 1]);
+    while (cur && !used.has(cur)) {
+      used.add(cur);
+      pts.push(...(pts.length ? cur.slice(1) : cur));
+      cur = byStart.get(key(cur[cur.length - 1]));
     }
-    chains.push(nodes);
+    const c = pts.map(([lon, lat]) => toWorld(lon, lat));
+    // An open chain whose end lies at the edge of the extract was cut there: carry that end on out of any raster
+    // along its last heading
+    const cut = ([lon, lat]) => Math.min(lat - bb[0], bb[2] - lat, (lon - bb[1]) * 0.75, (bb[3] - lon) * 0.75) < 0.004;
+    if (key(pts[0]) !== key(pts[pts.length - 1]) && c.length > 1) {
+      const out = (p, q) => {
+        const L = Math.hypot(p[0] - q[0], p[1] - q[1]) || 1;
+        return [p[0] + ((p[0] - q[0]) / L) * 40000, p[1] + ((p[1] - q[1]) / L) * 40000];
+      };
+      if (cut(pts[0])) c.unshift(out(c[0], c[Math.min(5, c.length - 1)]));
+      if (cut(pts[pts.length - 1])) c.push(out(c[c.length - 1], c[Math.max(0, c.length - 6)]));
+    }
+    chains.push(c);
   }
   return chains;
 }
-const coastChains = chainCoastline(load('osm_coastline.json'));
-coastChains.sort((a, b) => b.length - a.length);
-log(`OSM coastline: ${coastChains.length} chains; longest ${coastChains.slice(0, 6).map((c) => c.length).join(', ')}`);
+const coastOSM = load('bcn_coast.json');
+const coastChains = chainCoastline(coastOSM.elements, coastOSM.bbox).sort((a, b) => b.length - a.length);
+log(`coastline: ${coastChains.length} chains; longest ${coastChains.slice(0, 5).map((c) => c.length).join(', ')}`);
 
-const geo = { THETA, ORIGIN, manhattan, islands, boroughs, coastChains, pierPolys, mnRing };
-export { geo, toWorld, gridUV, rdp, rdpRing, ringArea, bbox, Raster, load, log, segLines, cscl, centroid };
+// Land raster over a box: the coastline drawn as walls, the sea flooded from the cells just right of every coastline
+// segment (the sea side), everything the flood can't reach is land
+function landRaster(x0, z0, x1, z1, res) {
+  const R = new Raster(x0, z0, x1, z1, res);
+  const { w, h, d } = R;
+  const WALL = 2;
+  const cell = (x, z) => [Math.floor((x - R.x0) / res), Math.floor((z - R.z0) / res)];
+  const seeds = [];
+  for (const c of coastChains) {
+    for (let k = 0; k + 1 < c.length; k++) {
+      const [ax, az] = c[k];
+      const [bx, bz] = c[k + 1];
+      const L = Math.hypot(bx - ax, bz - az);
+      const n = Math.max(1, Math.ceil(L / (res * 0.4)));
+      for (let s = 0; s <= n; s++) {
+        const [i, j] = cell(ax + ((bx - ax) * s) / n, az + ((bz - az) * s) / n);
+        if (i >= 0 && j >= 0 && i < w && j < h) d[j * w + i] = WALL;
+      }
+      if (L < 1e-6) continue;
+      // right of the direction of travel in (x, z) with z down the map: (dx, dz) -> (-dz, dx) is to the right of a walk
+      // seen from above with x east & z south? x = east, z = south: right of heading (dx, dz) is (-dz, dx)
+      const rx = -(bz - az) / L;
+      const rz = (bx - ax) / L;
+      for (const t of [0.25, 0.5, 0.75]) seeds.push(cell(ax + (bx - ax) * t + rx * res * 0.75, az + (bz - az) * t + rz * res * 0.75));
+    }
+  }
+  const SEA = 3;
+  const stack = [];
+  for (const [i, j] of seeds) {
+    if (i < 0 || j < 0 || i >= w || j >= h) continue;
+    const k = j * w + i;
+    if (d[k] === 0) { d[k] = SEA; stack.push(k); }
+  }
+  while (stack.length) {
+    const p = stack.pop();
+    const i = p % w;
+    const j = (p - i) / w;
+    if (i > 0 && d[p - 1] === 0) { d[p - 1] = SEA; stack.push(p - 1); }
+    if (i < w - 1 && d[p + 1] === 0) { d[p + 1] = SEA; stack.push(p + 1); }
+    if (j > 0 && d[p - w] === 0) { d[p - w] = SEA; stack.push(p - w); }
+    if (j < h - 1 && d[p + w] === 0) { d[p + w] = SEA; stack.push(p + w); }
+  }
+  for (let k = 0; k < d.length; k++) d[k] = d[k] === SEA ? 0 : 1;
+  return R;
+}
+
+// The detailed city: the land inside the DETAIL rectangle, opened to drop moles & breakwaters narrower than ~16 m
+const RES = 2;
+// Sutherland-Hodgman clip of a ring to an axis-aligned rectangle
+function clipRingToRect(ring, r) {
+  let out = ring;
+  for (const [axis, lim, keepBelow] of [[0, r.x0, false], [0, r.x1, true], [1, r.z0, false], [1, r.z1, true]]) {
+    const src = out;
+    out = [];
+    const inside = (p) => (keepBelow ? p[axis] <= lim : p[axis] >= lim);
+    for (let i = 0; i < src.length; i++) {
+      const a = src[(i + src.length - 1) % src.length];
+      const b = src[i];
+      if (inside(b) !== inside(a)) {
+        const t = (lim - a[axis]) / (b[axis] - a[axis]);
+        out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+      }
+      if (inside(b)) out.push(b);
+    }
+  }
+  return out;
+}
+// (traced over a margin, then clipped: the rectangle's corners stay square)
+const M = 200;
+const landR = landRaster(DETAIL.x0 - M, DETAIL.z0 - M, DETAIL.x1 + M, DETAIL.z1 + M, RES);
+landR.open(8);
+landR.keepLargest();
+let land = clipRingToRect(rdpRing(landR.traceOuter(), 1.6), DETAIL);
+if (ringArea(land) > 0) land.reverse();
+log(`detailed land ring: ${land.length} pts, ${(Math.abs(ringArea(land)) / 1e6).toFixed(2)} km²`);
+
+// The metropolitan land around it (low-detail city out to the fogged horizon): the coast across the whole extract
+const EXTRACT = (() => {
+  const bb = load('bcn_coast.json').bbox; // [lat0, lon0, lat1, lon1]
+  const corners = [[bb[1], bb[0]], [bb[3], bb[0]], [bb[3], bb[2]], [bb[1], bb[2]]].map(([lon, lat]) => toWorld(lon, lat));
+  return bbox(corners);
+})();
+const metroR = landRaster(EXTRACT.x0, EXTRACT.z0, EXTRACT.x1, EXTRACT.z1, 4);
+metroR.open(24);
+metroR.keepLargest();
+const metroLand = rdpRing(metroR.traceOuter(), 6);
+if (ringArea(metroLand) > 0) metroLand.reverse();
+log(`metropolitan land ring: ${metroLand.length} pts, ${(Math.abs(ringArea(metroLand)) / 1e6).toFixed(1)} km²`);
+
+const geo = { get THETA() { return THETA; }, land, metroLand, coastChains, DETAIL, EXTRACT, LAT0, LON0, KX, KY };
+export { geo, toWorld, toLonLat, enu, rdp, rdpRing, ringArea, bbox, centroid, pointInRing, Raster, load, log, roadsOSM, landRaster };

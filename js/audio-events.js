@@ -277,7 +277,7 @@ function gustBuffer(ctx) {
 
 function signal(ctx, walk) {
   const random = randomSource(84);
-  // NYC's newer APS units use rapid percussive ticks for WALK, with a quiet locator pulse between phases.
+  // Accessible pedestrian signals tick rapidly for the green man, with a quiet locator pulse between phases.
   return makeBuffer(ctx, walk ? 0.5 : 0.09, (t) => {
     const local = walk ? t % 0.125 : t;
     if (local > 0.055) return 0;

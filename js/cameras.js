@@ -1,21 +1,23 @@
 import * as THREE from 'three/webgpu';
-import { bryantParkLawn } from './landmarks.js';
+import { CITY_LANDMARKS } from './city-config.js';
 
 // Chase, action, cockpit, fixed-location and aerial cameras, with mouse/touch orbit and zoom.
 
 const CAMERA_PRESETS = [
-  { id: 'chase',       name: '3rd-Person Chase',         category: 'follow', fov: 56 },
-  { id: 'action',      name: 'Low-Angle Action',         category: 'follow', fov: 60 },
-  { id: 'pov',         name: 'First-Person / Cockpit',   category: 'follow', fov: 68 },
-  { id: 'centralPark', name: 'Central Park Oasis',       category: 'scenic', fov: 52 },
-  { id: 'fifthAve',    name: '5th Ave & Empire State',   category: 'scenic', fov: 48 },
-  { id: 'timesSquare', name: 'Times Square Crossroads',  category: 'scenic', fov: 58 },
-  { id: 'chryslerGCT', name: '42nd St · Chrysler & GCT', category: 'scenic', fov: 50 },
-  { id: 'observatory', name: 'Empire State 86th Deck',   category: 'scenic', fov: 52 },
-  { id: 'bryantPark',  name: 'Bryant Park & NYPL',       category: 'scenic', fov: 52 },
-  { id: 'waterfront',  name: 'East River & Skyline',     category: 'scenic', fov: 46 },
-  { id: 'drone',       name: 'Auto-Director Aerial',     category: 'scenic', fov: 50 }
+  { id: 'chase',       name: 'Persecución',                   category: 'follow', fov: 56 },
+  { id: 'action',      name: 'Contrapicado',                  category: 'follow', fov: 60 },
+  { id: 'pov',         name: 'Primera persona / cabina',      category: 'follow', fov: 68 },
+  { id: 'sagrada',     name: 'Sagrada Família',               category: 'scenic', fov: 50 },
+  { id: 'gracia',      name: 'Passeig de Gràcia',             category: 'scenic', fov: 48 },
+  { id: 'rambla',      name: 'La Rambla',                     category: 'scenic', fov: 56 },
+  { id: 'catalunya',   name: 'Plaça de Catalunya',            category: 'scenic', fov: 52 },
+  { id: 'glories',     name: 'Torre Glòries & Diagonal',      category: 'scenic', fov: 50 },
+  { id: 'port',        name: 'Port Vell & Colom',             category: 'scenic', fov: 50 },
+  { id: 'beach',       name: 'Platja de la Barceloneta',      category: 'scenic', fov: 46 },
+  { id: 'drone',       name: 'Dron automático',               category: 'scenic', fov: 50 }
 ];
+// Where each scenic camera looks from: the landmarks' real places (city-config.js CITY_LANDMARKS)
+const SITE = Object.fromEntries(CITY_LANDMARKS.map((l) => [l.id, l]));
 
 class CameraSystem {
   constructor(domElement, controllerManager) {
@@ -253,61 +255,66 @@ class CameraSystem {
         break;
       }
 
-      case 'centralPark': {
-        // Inside Central Park South looking across The Pond, Gapstow Bridge, The Mall, Sheep Meadow & UWS/UES Skylines
-        const sway = Math.sin(elapsed * 0.22) * 3.5;
-        desiredPos.set(-70.0 + sway, 14.0, -1425.0);
-        desiredLook.set(-250.0, 6.5, -1690.0);
+      case 'sagrada': {
+        // From Plaça de Gaudí's pond across Carrer de Marina, up the Nativity facade to the towers
+        const sway = Math.sin(elapsed * 0.22) * 4.0;
+        const sf = SITE.sagrada;
+        desiredPos.set(sf.x + 175.0 + sway, 12.0, sf.z - 40.0);
+        desiredLook.set(sf.x, 85.0, sf.z + 4.0);
         break;
       }
 
-      case 'fifthAve': {
-        // 5th Avenue & 42nd St looking South down the 5th Ave canyon toward the Empire State Building
+      case 'gracia': {
+        // Down Passeig de Gràcia from La Pedrera toward Casa Batlló & Plaça de Catalunya
         const sway = Math.sin(elapsed * 0.25) * 1.8;
-        desiredPos.set(0.0 + sway, 6.5, -20.0);
-        desiredLook.set(-60.0, 150.0, 686.0);
+        const pe = SITE.pedrera;
+        desiredPos.set(pe.x - 60.0 + sway, 7.5, pe.z + 40.0);
+        desiredLook.set(SITE.batllo.x - 30.0, 22.0, SITE.batllo.z + 120.0);
         break;
       }
 
-      case 'timesSquare': {
-        // Times Square & Broadway looking across Duffy Square red steps and One Times Square billboards
-        const sway = Math.sin(elapsed * 0.3) * 3.0;
-        desiredPos.set(-603.0 + sway, 5.5, -290.0);
-        desiredLook.set(-566.0, 40.0, -40.0);
+      case 'rambla': {
+        // Under the plane trees of La Rambla by the Liceu, looking down toward the port
+        const sway = Math.sin(elapsed * 0.3) * 2.0;
+        const r = SITE.rambla;
+        desiredPos.set(r.x - 10.0 + sway, 5.0, r.z - 60.0);
+        desiredLook.set(r.x + 40.0, 12.0, r.z + 260.0);
         break;
       }
 
-      case 'chryslerGCT': {
-        // Park Ave & 42nd St intersection looking straight at Grand Central, MetLife, and Chrysler Building Crown
+      case 'catalunya': {
+        // Over Plaça de Catalunya's fountains, the Eixample's cornice line beyond
+        const pan = Math.sin(elapsed * 0.16) * 60.0;
+        const c = SITE.catalunya;
+        desiredPos.set(c.x + 60.0, 38.0, c.z + 140.0);
+        desiredLook.set(c.x + pan, 10.0, c.z - 160.0);
+        break;
+      }
+
+      case 'glories': {
+        // Up Avinguda Diagonal to Torre Glòries
         const sway = Math.cos(elapsed * 0.22) * 2.5;
-        desiredPos.set(300.0 + sway, 9.5, 95.0);
-        desiredLook.set(470.0, 120.0, -50.0);
+        const g = SITE.glories;
+        desiredPos.set(g.x - 420.0 + sway, 16.0, g.z - 160.0);
+        desiredLook.set(g.x, 70.0, g.z);
         break;
       }
 
-      case 'observatory': {
-        // Empire State Building 86th Floor Deck looking North-East across Midtown skyline
-        const pan = Math.sin(elapsed * 0.18) * 80.0;
-        desiredPos.set(-58.0, 322.0, 660.0);
-        desiredLook.set(420.0 + pan, 150.0, -200.0);
+      case 'port': {
+        // Over the Port Vell's water, Colom's column against the old town & Montjuïc
+        const drift = Math.sin(elapsed * 0.15) * 30.0;
+        const c = SITE.colom;
+        desiredPos.set(c.x + 260.0 + drift, 30.0, c.z + 260.0);
+        desiredLook.set(c.x, 30.0, c.z);
         break;
       }
 
-      case 'bryantPark': {
-        // Inside Bryant Park Great Lawn looking East toward NYPL portico, One Vanderbilt & Chrysler Building
-        const sway = Math.sin(elapsed * 0.25) * 1.5;
-        const lawn = bryantParkLawn || { minX: -260, maxX: -150, minZ: 40, maxZ: 120, top: 1.3 };
-        const lz = (lawn.minZ + lawn.maxZ) * 0.5;
-        desiredPos.set(lawn.minX + 18.0, lawn.top + 1.7, lz + sway);
-        desiredLook.set(lawn.maxX + 260.0, 70.0, lz - 60.0);
-        break;
-      }
-
-      case 'waterfront': {
-        // Over the shimmering East River looking across the FDR Drive, Queensboro Bridge & Midtown Skyline
-        const drift = Math.sin(elapsed * 0.15) * 40.0;
-        desiredPos.set(1640.0, 60.0, 60.0 + drift);
-        desiredLook.set(150.0, 150.0, -150.0);
+      case 'beach': {
+        // Out over the sea off the Barceloneta's beach: the W's sail, the old fishermen's quarter, the Olympic towers
+        const drift = Math.sin(elapsed * 0.12) * 60.0;
+        const b = SITE.barceloneta;
+        desiredPos.set(b.x + 240.0 + drift, 45.0, b.z + 560.0);
+        desiredLook.set(b.x + 120.0, 40.0, b.z);
         break;
       }
 
@@ -315,12 +322,13 @@ class CameraSystem {
         const angle = elapsed * 0.07 + 0.65;
         const radius = 720.0 + Math.sin(elapsed * 0.23) * 140.0;
         const alt = 330.0 + Math.cos(elapsed * 0.19) * 90.0;
+        // circling over the Eixample between Plaça de Catalunya & the Sagrada Família
         desiredPos.set(
-          Math.cos(angle) * radius + 60.0,
+          Math.cos(angle) * radius + 700.0,
           alt,
-          Math.sin(angle) * radius + 250.0
+          Math.sin(angle) * radius - 500.0
         );
-        desiredLook.set(60.0, 160.0, 250.0);
+        desiredLook.set(700.0, 60.0, -500.0);
         break;
       }
     }

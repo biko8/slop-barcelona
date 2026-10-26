@@ -146,7 +146,7 @@ class LightingSystem {
     this.scene.background = null;
 
     // Physical Preetham SkyMesh + Beer-Powder Clouds (from three/addons/objects/SkyMesh.js). Its unit box must contain
-    // the camera wherever it flies over the 1:1 harbour (Manhattan alone is 13.6 km long; it renders at the far plane
+    // the camera wherever it flies over the 1:1 harbour (the metropolitan area runs ~17 km along the coast; it renders at the far plane
     // whatever its size)
     this.sky = new SkyMesh();
     this.sky.scale.setScalar(200000);
